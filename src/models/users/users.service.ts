@@ -8,6 +8,7 @@ import mongoose, { Model } from 'mongoose';
 import { hashPasswordHelper } from '../../helpers/utils.js';
 import { v4 as uuidv4 } from 'uuid';
 import dayjs from 'dayjs';
+import { CreateAuthDto } from '../../auth/dto/create-auth.dto.js';
 
 @Injectable()
 export class UsersService {
@@ -45,7 +46,7 @@ export class UsersService {
     };
   }
 
-  async register(registerDto: CreateUserDto) {
+  async register(registerDto: CreateAuthDto) {
     const { email, name, password } = registerDto;
 
     //check mail
