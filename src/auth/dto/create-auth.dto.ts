@@ -18,3 +18,9 @@ export class LoginAuthDto {
   @IsNotEmpty({ message: 'password không được để trống' })
   password: string;
 }
+
+export interface IUserPayload {
+  _id: string;
+  email: string;
+  name: string;
+}

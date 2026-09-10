@@ -1,5 +1,9 @@
 import { Body, Injectable, UnauthorizedException } from '@nestjs/common';
-import { CreateAuthDto, LoginAuthDto } from './dto/create-auth.dto.js';
+import {
+  CreateAuthDto,
+  IUserPayload,
+  LoginAuthDto,
+} from './dto/create-auth.dto.js';
 import { UpdateAuthDto } from './dto/update-auth.dto.js';
 import { UsersService } from '../models/users/users.service.js';
 import { JwtService } from '@nestjs/jwt';
@@ -12,8 +16,7 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async validateUser(@Body() loginAuthDto: LoginAuthDto): Promise<any> {
-    const { email, password } = loginAuthDto;
+  async validateUser(email: string, password: string): Promise<any> {
     const user = await this.usersService.findByEmail(email);
     if (!user) {
       throw new UnauthorizedException('Username/Password không hợp lệ.');
@@ -26,12 +29,10 @@ export class AuthService {
       throw new UnauthorizedException('Username/Password không hợp lệ.');
     }
 
-    return {
-      user,
-    };
+    return user;
   }
 
-  async login(user: any) {
+  async login(user: IUserPayload) {
     const payload = { username: user.email, sub: user._id };
     return {
       access_token: this.jwtService.sign(payload),

@@ -9,12 +9,14 @@ import { hashPasswordHelper } from '../../helpers/utils.js';
 import { v4 as uuidv4 } from 'uuid';
 import dayjs from 'dayjs';
 import { CreateAuthDto } from '../../auth/dto/create-auth.dto.js';
+import { MailerService } from '@nestjs-modules/mailer';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectModel(User.name)
     private userModel: Model<User>,
+    private readonly mailerService: MailerService,
   ) {}
 
   isEmailExist = async (email: string) => {
@@ -67,6 +69,17 @@ export class UsersService {
       isActive: false,
       codeId: codeId,
       codeExpired: dayjs().add(10, 'minutes').toDate(),
+    });
+
+    //send mail
+    this.mailerService.sendMail({
+      to: user.email,
+      subject: 'Activate your account at E-Commerce',
+      template: 'register',
+      context: {
+        name: user?.name ?? user.email,
+        activationCode: codeId,
+      },
     });
 
     return {

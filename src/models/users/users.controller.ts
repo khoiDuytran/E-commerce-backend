@@ -11,6 +11,7 @@ import {
 import { UsersService } from './users.service.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { UpdateUserDto } from './dto/update-user.dto.js';
+import { Public } from '../../decorator/customize.js';
 
 @Controller('users')
 export class UsersController {

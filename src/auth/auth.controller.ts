@@ -3,28 +3,28 @@ import {
   Get,
   Post,
   Body,
-  Patch,
-  Param,
-  Delete,
   UseGuards,
   Request,
 } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
-import { CreateAuthDto, LoginAuthDto } from './dto/create-auth.dto.js';
-import { UpdateAuthDto } from './dto/update-auth.dto.js';
-import { AuthGuard } from '@nestjs/passport';
+import { CreateAuthDto } from './dto/create-auth.dto.js';
 import { LocalAuthGuard } from './passport/local-auth.guard.js';
-import { Public } from '../decorator/customize.js';
+import { Public, ResponseMessage } from '../decorator/customize.js';
+import { MailerService } from '@nestjs-modules/mailer';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly mailerService: MailerService,
+  ) {}
 
   @Post('login')
   @UseGuards(LocalAuthGuard)
   @Public()
+  @ResponseMessage('Fetch login')
   async login(@Request() req: any) {
-    return req.user;
+    return this.authService.login(req.user);
   }
 
   @UseGuards(LocalAuthGuard)
@@ -38,5 +38,17 @@ export class AuthController {
   @Public()
   register(@Body() createAuthDto: CreateAuthDto) {
     return this.authService.register(createAuthDto);
+  }
+
+  @Get('mail')
+  @Public()
+  testMail() {
+    this.mailerService.sendMail({
+      to: 'khoitranduy9404@gmail.com',
+      subject: 'Welcome!',
+      template: 'register.hbs',
+      context: { name: 'tranduykhoi', activationCode: '123456' },
+    });
+    return 'ok';
   }
 }
