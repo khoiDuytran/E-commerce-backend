@@ -2,12 +2,15 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule, ObserveInstrument } from './app.module.js';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
   const port = configService.get('PORT');
   app.setGlobalPrefix('api', { exclude: [''] });
+
+  app.use(cookieParser());
 
   app.useGlobalPipes(
     new ValidationPipe({

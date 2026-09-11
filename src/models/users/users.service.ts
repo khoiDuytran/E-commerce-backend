@@ -114,6 +114,10 @@ export class UsersService {
     return await this.userModel.findOne({ email });
   }
 
+  async findById(id: string) {
+    return await this.userModel.findById(id).select('-password');
+  }
+
   async update(updateUserDto: UpdateUserDto) {
     return await this.userModel.updateOne(
       { _id: updateUserDto._id },

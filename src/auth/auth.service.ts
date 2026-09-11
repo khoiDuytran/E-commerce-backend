@@ -1,8 +1,7 @@
-import { Body, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import {
   CreateAuthDto,
   IUserPayload,
-  LoginAuthDto,
 } from './dto/create-auth.dto.js';
 import { UpdateAuthDto } from './dto/update-auth.dto.js';
 import { UsersService } from '../models/users/users.service.js';
@@ -42,6 +41,16 @@ export class AuthService {
         name: user.name,
       },
     };
+  }
+
+  async refreshAccessToken(userId: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException('Tài khoản không tồn tại.');
+    }
+
+    const payload = { username: user.email, sub: user._id };
+    return this.jwtService.sign(payload);
   }
 
   async register(createAuthDto: CreateAuthDto) {

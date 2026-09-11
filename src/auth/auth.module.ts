@@ -7,10 +7,12 @@ import { ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import { LocalStrategy } from './passport/local.strategy.js';
 import { JwtStrategy } from './passport/jwt.strategy.js';
+import { RefreshTokensModule } from '../models/refresh-tokens/refresh-tokens.module.js';
 
 @Module({
   imports: [
     UsersModule,
+    RefreshTokensModule,
     JwtModule.registerAsync({
       useFactory: async (configService: ConfigService) => ({
         global: true,
