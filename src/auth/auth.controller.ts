@@ -19,6 +19,8 @@ import { Public, ResponseMessage } from '../decorator/customize.js';
 import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
 import { RefreshTokensService } from '../models/refresh-tokens/refresh-tokens.service.js';
+import { CodeAuthDto } from './dto/code-auth.dto.js';
+import { ChangePasswordAuthDto } from './dto/change-password.dto.js';
 
 @Controller('auth')
 export class AuthController {
@@ -106,5 +108,29 @@ export class AuthController {
       context: { name: 'tranduykhoi', activationCode: '123456' },
     });
     return 'ok';
+  }
+
+  @Post('check-code')
+  @Public()
+  checkCode(@Body() codeAuthDto: CodeAuthDto) {
+    return this.authService.checkCode(codeAuthDto);
+  }
+
+  @Post('retry-active')
+  @Public()
+  retryActive(@Body('email') email: string) {
+    return this.authService.retryActive(email);
+  }
+
+  @Post('retry-password')
+  @Public()
+  retryPassword(@Body('email') email: string) {
+    return this.authService.retryPassword(email);
+  }
+
+  @Post('change-password')
+  @Public()
+  changePassword(@Body() data: ChangePasswordAuthDto) {
+    return this.authService.changePassword(data);
   }
 }

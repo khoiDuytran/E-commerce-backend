@@ -8,6 +8,7 @@ import {
   RefreshTokenDocument,
 } from './schemas/refresh-token.schema.js';
 import ms, { StringValue } from 'ms';
+import { hashPasswordHelper } from '../../helpers/utils.js';
 
 @Injectable()
 export class RefreshTokensService {
@@ -19,6 +20,7 @@ export class RefreshTokensService {
 
   async generateRefreshToken(userId: string): Promise<string> {
     const token = uuidv4();
+    const hashToken = await hashPasswordHelper(token);
     const expiresInMs = ms(
       this.configService.get<string>(
         'JWT_REFRESH_TOKEN_EXPIRE',
@@ -28,7 +30,7 @@ export class RefreshTokensService {
     const expiresAt = new Date(Date.now() + expiresInMs);
 
     await this.refreshTokenModel.create({
-      token,
+      token: hashToken,
       userId: new Types.ObjectId(userId),
       expiresAt,
     });
