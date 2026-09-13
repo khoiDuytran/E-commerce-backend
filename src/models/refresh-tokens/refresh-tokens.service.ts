@@ -7,8 +7,7 @@ import {
   RefreshToken,
   RefreshTokenDocument,
 } from './schemas/refresh-token.schema.js';
-import ms, { StringValue } from 'ms';
-import { hashPasswordHelper } from '../../helpers/utils.js';
+import { hashToken, parseDurationToMs } from '../../helpers/utils.js';
 
 @Injectable()
 export class RefreshTokensService {
@@ -20,17 +19,16 @@ export class RefreshTokensService {
 
   async generateRefreshToken(userId: string): Promise<string> {
     const token = uuidv4();
-    const hashToken = await hashPasswordHelper(token);
-    const expiresInMs = ms(
-      this.configService.get<string>(
-        'JWT_REFRESH_TOKEN_EXPIRE',
-        '7d',
-      ) as StringValue,
+    const hashedToken = await hashToken(token);
+    const expiresAt = new Date(
+      Date.now() +
+        parseDurationToMs(
+          this.configService.get<string>('JWT_REFRESH_TOKEN_EXPIRE', '7d'),
+        ),
     );
-    const expiresAt = new Date(Date.now() + expiresInMs);
 
     await this.refreshTokenModel.create({
-      token: hashToken,
+      token: hashedToken,
       userId: new Types.ObjectId(userId),
       expiresAt,
     });

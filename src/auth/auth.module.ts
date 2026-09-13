@@ -8,6 +8,7 @@ import { PassportModule } from '@nestjs/passport';
 import { LocalStrategy } from './passport/local.strategy.js';
 import { JwtStrategy } from './passport/jwt.strategy.js';
 import { RefreshTokensModule } from '../models/refresh-tokens/refresh-tokens.module.js';
+import { parseDurationToMs } from '../helpers/utils.js';
 
 @Module({
   imports: [
@@ -18,7 +19,9 @@ import { RefreshTokensModule } from '../models/refresh-tokens/refresh-tokens.mod
         global: true,
         secret: configService.get<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: configService.get<number>('JWT_ACCESS_TOKEN_EXPIRED'),
+          expiresIn: parseDurationToMs(
+            configService.get<string>('JWT_ACCESS_TOKEN_EXPIRED', '30m '),
+          ),
         },
       }),
       inject: [ConfigService],

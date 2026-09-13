@@ -4,6 +4,9 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UsersModule } from './models/users/users.module.js';
+import { BrandModule } from './models/brand/brand.module.js';
+import { CategoryModule } from './models/category/category.module.js';
+import { ProductModule } from './models/product/product.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
@@ -17,6 +20,9 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
 @Module({
   imports: [
     UsersModule,
+    BrandModule,
+    CategoryModule,
+    ProductModule,
     ConfigModule.forRoot({ isGlobal: true }),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],

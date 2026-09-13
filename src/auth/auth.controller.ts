@@ -9,6 +9,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type {
+  CookieOptions,
   Request as ExpressRequest,
   Response as ExpressResponse,
 } from 'express';
@@ -21,6 +22,9 @@ import { ConfigService } from '@nestjs/config';
 import { RefreshTokensService } from '../models/refresh-tokens/refresh-tokens.service.js';
 import { CodeAuthDto } from './dto/code-auth.dto.js';
 import { ChangePasswordAuthDto } from './dto/change-password.dto.js';
+import { parseDurationToMs } from '../helpers/utils.js';
+
+const REFRESH_TOKEN_COOKIE = 'refresh_token';
 
 @Controller('auth')
 export class AuthController {
@@ -31,13 +35,18 @@ export class AuthController {
     private readonly refreshTokenService: RefreshTokensService,
   ) {}
 
-  private refreshCookieOptions() {
+  private refreshCookieOptions(): CookieOptions {
     const secure = this.configService.get<string>('NODE_ENV') === 'production';
+    const refreshExpire = this.configService.get<string>(
+      'JWT_REFRESH_TOKEN_EXPIRE',
+      '7d',
+    );
     return {
       httpOnly: true,
       secure,
       sameSite: secure ? ('none' as const) : ('lax' as const),
       path: '/api/auth',
+      maxAge: parseDurationToMs(refreshExpire),
     };
   }
 
@@ -53,7 +62,7 @@ export class AuthController {
     const refreshToken = await this.refreshTokenService.generateRefreshToken(
       req.user._id.toString(),
     );
-    res.cookie('refresh_token', refreshToken, this.refreshCookieOptions());
+    res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, this.refreshCookieOptions());
     return result;
   }
 
@@ -74,7 +83,7 @@ export class AuthController {
     const accessToken = await this.authService.refreshAccessToken(
       session.userId.toString(),
     );
-    res.cookie('refresh_token', refreshToken, this.refreshCookieOptions());
+    res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, this.refreshCookieOptions());
     return { access_token: accessToken };
   }
 
