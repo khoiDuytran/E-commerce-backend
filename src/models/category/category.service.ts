@@ -100,7 +100,7 @@ export class CategoryService {
       const updated = await this.categoryModel.findByIdAndUpdate(
         _id,
         { ...updateData },
-        { new: true, runValidators: true },
+        { returnDocument: 'after', runValidators: true },
       );
 
       if (!updated) {

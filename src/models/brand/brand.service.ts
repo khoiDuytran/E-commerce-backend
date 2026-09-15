@@ -75,7 +75,7 @@ export class BrandService {
       const updated = await this.brandModel.findByIdAndUpdate(
         _id,
         { ...updateData },
-        { new: true, runValidators: true },
+        { returnDocument: 'after', runValidators: true },
       );
 
       if (!updated) {

@@ -44,6 +44,11 @@ export class CreateProductDto {
   @IsOptional()
   tags?: string[];
 
+  @IsNumber()
+  @Min(0)
+  @IsNotEmpty()
+  stock: number;
+
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;

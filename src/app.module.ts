@@ -14,6 +14,7 @@ import { JwtAuthGuard } from './auth/passport/jwt-auth.guard.js';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/adapters/handlebars.adapter';
 import { TransformInterceptor } from './core/transform.interceptor.js';
+import { AddressesModule } from './models/addresses/addresses.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -22,6 +23,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     UsersModule,
     BrandModule,
     CategoryModule,
+    AddressesModule,
     ProductModule,
     ConfigModule.forRoot({ isGlobal: true }),
     MongooseModule.forRootAsync({

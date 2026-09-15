@@ -120,7 +120,7 @@ export class ProductService {
       const updated = await this.productModel.findByIdAndUpdate(
         _id,
         { ...updateData },
-        { new: true, runValidators: true },
+        { returnDocument: 'after', runValidators: true },
       );
 
       if (!updated) {
