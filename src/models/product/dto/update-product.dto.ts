@@ -16,11 +16,11 @@ export class UpdateProductDto {
   _id: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   name: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   slug: string;
 
   @IsString()
@@ -28,6 +28,7 @@ export class UpdateProductDto {
   description?: string;
 
   @IsMongoId()
+  @IsOptional()
   category: string;
 
   @IsMongoId()
@@ -41,6 +42,7 @@ export class UpdateProductDto {
 
   @IsNumber()
   @Min(0)
+  @IsOptional()
   basePrice: number;
 
   @IsArray()
@@ -50,7 +52,7 @@ export class UpdateProductDto {
 
   @IsNumber()
   @Min(0)
-  @IsNotEmpty()
+  @IsOptional()
   stock: number;
 
   @IsBoolean()
