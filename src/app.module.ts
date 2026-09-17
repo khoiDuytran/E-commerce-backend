@@ -16,6 +16,7 @@ import { HandlebarsAdapter } from '@nestjs-modules/mailer/adapters/handlebars.ad
 import { TransformInterceptor } from './core/transform.interceptor.js';
 import { AddressesModule } from './models/addresses/addresses.module.js';
 import { CartModule } from './models/cart/cart.module.js';
+import { CouponModule } from './models/coupon/coupon.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -61,6 +62,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
       inject: [ConfigService],
     }),
     CartModule,
+    CouponModule,
   ],
   controllers: [AppController],
   providers: [
