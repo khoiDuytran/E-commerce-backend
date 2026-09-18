@@ -293,7 +293,7 @@ export class UsersService {
       .findByIdAndUpdate(
         _id,
         { ...updateData },
-        { new: true, runValidators: true },
+        { returnDocument: 'after', runValidators: true },
       )
       .select('-password');
 

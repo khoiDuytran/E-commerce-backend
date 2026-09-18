@@ -17,6 +17,7 @@ import { TransformInterceptor } from './core/transform.interceptor.js';
 import { AddressesModule } from './models/addresses/addresses.module.js';
 import { CartModule } from './models/cart/cart.module.js';
 import { CouponModule } from './models/coupon/coupon.module.js';
+import { OrdersModule } from './models/orders/orders.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -63,6 +64,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     }),
     CartModule,
     CouponModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [
