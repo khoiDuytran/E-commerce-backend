@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AddressesModule } from '../addresses/addresses.module.js';
-import { Coupon, CouponSchema } from '../coupon/schemas/coupon.schema.js';
-import { Product, ProductSchema } from '../product/schemas/product.schema.js';
+import { Coupon, CouponSchema } from '../coupons/schemas/coupon.schema.js';
+import { Product, ProductSchema } from '../products/schemas/product.schema.js';
 import { OrdersController } from './orders.controller.js';
 import { OrdersService } from './orders.service.js';
 import { Order, OrderSchema } from './schemas/order.schema.js';

@@ -8,7 +8,10 @@ import { Model, Types } from 'mongoose';
 import { validateObjectIdHelper } from '../../helpers/utils.js';
 import { CartItemDto, CreateCartDto } from './dto/create-cart.dto.js';
 import { Cart, CartDocument } from './schemas/cart.schema.js';
-import { Product, ProductDocument } from '../product/schemas/product.schema.js';
+import {
+  Product,
+  ProductDocument,
+} from '../products/schemas/product.schema.js';
 import { UpdateCartDto } from './dto/update-cart.dto.js';
 
 @Injectable()

@@ -13,8 +13,8 @@ import { Product, ProductDocument } from './schemas/product.schema.js';
 import {
   Category,
   CategoryDocument,
-} from '../category/schemas/category.schema.js';
-import { Brand, BrandDocument } from '../brand/schemas/brand.schema.js';
+} from '../categories/schemas/category.schema.js';
+import { Brand, BrandDocument } from '../brands/schemas/brand.schema.js';
 import {
   isDuplicateKeyErrorHelper,
   validateObjectIdHelper,

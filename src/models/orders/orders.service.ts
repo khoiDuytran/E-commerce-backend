@@ -13,8 +13,11 @@ import { OrderStatus } from '../../common/enums/order-status.enum.js';
 import { PaymentStatus } from '../../common/enums/payment-status.enum.js';
 import { validateObjectIdHelper } from '../../helpers/utils.js';
 import { AddressesService } from '../addresses/addresses.service.js';
-import { Coupon, CouponDocument } from '../coupon/schemas/coupon.schema.js';
-import { Product, ProductDocument } from '../product/schemas/product.schema.js';
+import { Coupon, CouponDocument } from '../coupons/schemas/coupon.schema.js';
+import {
+  Product,
+  ProductDocument,
+} from '../products/schemas/product.schema.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 import { UpdateOrderDto } from './dto/update-order.dto.js';
 import { Order, OrderDocument } from './schemas/order.schema.js';
