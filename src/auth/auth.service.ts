@@ -1,6 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { CreateAuthDto, IUserPayload } from './dto/create-auth.dto.js';
-import { UsersService } from '../models/users/users.service.js';
+import { UsersService } from '../modules/users/users.service.js';
 import { JwtService } from '@nestjs/jwt';
 import { comparePasswordHelper } from '../helpers/utils.js';
 import { CodeAuthDto } from './dto/code-auth.dto.js';

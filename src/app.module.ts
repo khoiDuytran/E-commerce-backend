@@ -3,10 +3,10 @@ import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { MongooseModule } from '@nestjs/mongoose';
-import { UsersModule } from './models/users/users.module.js';
-import { BrandModule } from './models/brands/brands.module.js';
-import { CategoryModule } from './models/categories/categories.module.js';
-import { ProductModule } from './models/products/products.module.js';
+import { UsersModule } from './modules/users/users.module.js';
+import { BrandModule } from './modules/brands/brands.module.js';
+import { CategoryModule } from './modules/categories/categories.module.js';
+import { ProductModule } from './modules/products/products.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
@@ -14,11 +14,12 @@ import { JwtAuthGuard } from './auth/passport/jwt-auth.guard.js';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/adapters/handlebars.adapter';
 import { TransformInterceptor } from './core/transform.interceptor.js';
-import { AddressesModule } from './models/addresses/addresses.module.js';
-import { CartModule } from './models/cart/cart.module.js';
-import { CouponModule } from './models/coupons/coupons.module.js';
-import { OrdersModule } from './models/orders/orders.module.js';
-import { PaymentsModule } from './models/payments/payments.module.js';
+import { AddressesModule } from './modules/addresses/addresses.module.js';
+import { CartModule } from './modules/carts/carts.module.js';
+import { CouponModule } from './modules/coupons/coupons.module.js';
+import { OrdersModule } from './modules/orders/orders.module.js';
+import { PaymentsModule } from './modules/payments/payments.module.js';
+import { RefundsModule } from './modules/refunds/refunds.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -67,6 +68,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     CouponModule,
     OrdersModule,
     PaymentsModule,
+    RefundsModule,
   ],
   controllers: [AppController],
   providers: [

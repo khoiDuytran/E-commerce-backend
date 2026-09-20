@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { InjectModel } from '@nestjs/mongoose';
 import aqp from 'api-query-params';
 import mongoose, { Model } from 'mongoose';
@@ -21,6 +22,7 @@ import {
 import { CreateOrderDto } from './dto/create-order.dto.js';
 import { UpdateOrderDto } from './dto/update-order.dto.js';
 import { Order, OrderDocument } from './schemas/order.schema.js';
+import { PaymentsService } from '../payments/payments.service.js';
 
 @Injectable()
 export class OrdersService {
@@ -32,6 +34,7 @@ export class OrdersService {
     @InjectModel(Coupon.name)
     private readonly couponModel: Model<CouponDocument>,
     private readonly addressesService: AddressesService,
+    private readonly paymentsService: PaymentsService,
   ) {}
 
   private async findOwnedOrThrow(
@@ -53,7 +56,8 @@ export class OrdersService {
   }
 
   async create(userId: string, createOrderDto: CreateOrderDto) {
-    const { items, addressId, shippingAddress, coupon, note } = createOrderDto;
+    const { items, addressId, shippingAddress, coupon, note, paymentMethod } =
+      createOrderDto;
 
     validateObjectIdHelper(userId);
 
@@ -205,6 +209,8 @@ export class OrdersService {
     let couponApplied = false;
 
     try {
+      const orderCode = `ORD-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
+
       for (const [productId, quantity] of stockChecks.entries()) {
         const updatedProduct = await this.productModel.findOneAndUpdate(
           { _id: productId, stock: { $gte: quantity } },
@@ -241,6 +247,7 @@ export class OrdersService {
       }
 
       const order = await this.orderModel.create({
+        orderCode,
         user: userId,
         items: itemSnapshots,
         shippingAddress: snapshotShippingAddress,
@@ -254,7 +261,15 @@ export class OrdersService {
         note,
       });
 
-      return { message: 'Tạo đơn hàng thành công', order };
+      const payment = await this.paymentsService.createForOrder(
+        userId,
+        order._id.toString(),
+        order.orderCode,
+        order.total,
+        paymentMethod,
+      );
+
+      return { message: 'Tạo đơn hàng thành công', order, payment };
     } catch (err) {
       // Compensation: hoàn lại những gì đã ghi thành công trước khi lỗi xảy ra
       for (const { productId, quantity } of appliedStockChanges) {
@@ -305,10 +320,36 @@ export class OrdersService {
     return this.findOwnedOrThrow(_id, userId);
   }
 
+  async findByOrderCode(userId: string, orderCode: string) {
+    const normalizedOrderCode = orderCode?.trim();
+    if (!normalizedOrderCode) {
+      throw new BadRequestException('orderCode không được để trống');
+    }
+
+    const order = await this.orderModel.findOne({
+      orderCode: normalizedOrderCode,
+      user: userId,
+    });
+    if (!order) {
+      throw new NotFoundException('Không tìm thấy đơn hàng');
+    }
+
+    return order;
+  }
+
   async update(userId: string, updateOrderDto: UpdateOrderDto) {
     const { _id, ...updateData } = updateOrderDto;
 
     await this.findOwnedOrThrow(_id, userId);
+
+    if (
+      updateData.status === OrderStatus.REFUNDED ||
+      updateData.paymentStatus === PaymentStatus.REFUNDED
+    ) {
+      throw new BadRequestException(
+        'Trạng thái hoàn tiền phải được xử lý qua refund service',
+      );
+    }
 
     // TODO: khi có role — chỉ admin được sửa status/paymentStatus;
     // user thường chỉ nên sửa shippingAddress/note, và chỉ khi status còn PENDING

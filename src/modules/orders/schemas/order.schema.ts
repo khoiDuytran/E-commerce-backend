@@ -51,6 +51,9 @@ export const ShippingAddressSchema =
 
 @Schema({ timestamps: true })
 export class Order {
+  @Prop({ required: true, trim: true })
+  orderCode: string;
+
   @Prop({ type: Types.ObjectId, ref: 'User', required: true })
   user: Types.ObjectId;
 
@@ -99,3 +102,7 @@ export class Order {
 export const OrderSchema = SchemaFactory.createForClass(Order);
 
 OrderSchema.index({ user: 1, createdAt: -1 });
+OrderSchema.index(
+  { orderCode: 1 },
+  { unique: true, partialFilterExpression: { orderCode: { $exists: true } } },
+);

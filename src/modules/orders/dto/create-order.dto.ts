@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsEnum,
   IsMongoId,
   IsNotEmpty,
   IsNumber,
@@ -11,6 +12,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { PaymentMethod } from '../../../common/enums/payment-method.enum.js';
 
 export class OrderItemDto {
   @IsMongoId({ message: 'product không hợp lệ' })
@@ -73,6 +75,10 @@ export class CreateOrderDto {
   @IsString()
   @IsOptional()
   note?: string;
+
+  @IsNotEmpty()
+  @IsEnum(PaymentMethod)
+  paymentMethod: PaymentMethod;
 
   // status, paymentStatus: KHÔNG nhận từ client — service tự gán mặc định (PENDING)
   // shippingFee: KHÔNG nhận từ client — tính server-side dựa trên địa chỉ/giỏ hàng

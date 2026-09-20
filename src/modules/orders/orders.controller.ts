@@ -32,6 +32,11 @@ export class OrdersController {
     return this.ordersService.findAll(req.user._id, query, +current, +pageSize);
   }
 
+  @Get('code/:orderCode')
+  findByOrderCode(@Req() req, @Param('orderCode') orderCode: string) {
+    return this.ordersService.findByOrderCode(req.user._id, orderCode);
+  }
+
   @Get(':id')
   findOne(@Req() req, @Param('id') id: string) {
     return this.ordersService.findOne(req.user._id, id);

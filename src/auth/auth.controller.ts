@@ -19,7 +19,7 @@ import { LocalAuthGuard } from './passport/local-auth.guard.js';
 import { Public, ResponseMessage } from '../decorator/customize.js';
 import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
-import { RefreshTokensService } from '../models/refresh-token/refresh-token.service.js';
+import { RefreshTokensService } from '../modules/refresh-tokens/refresh-tokens.service.js';
 import { CodeAuthDto } from './dto/code-auth.dto.js';
 import { ChangePasswordAuthDto } from './dto/change-password.dto.js';
 import { parseDurationToMs } from '../helpers/utils.js';

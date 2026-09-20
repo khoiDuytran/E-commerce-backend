@@ -8,7 +8,7 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
-import { CartService } from './cart.service.js';
+import { CartService } from './carts.service.js';
 import { CartItemDto } from './dto/create-cart.dto.js';
 import { UpdateCartDto } from './dto/update-cart.dto.js';
 

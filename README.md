@@ -57,6 +57,38 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## VNPay Sandbox
+
+For VNPay orders, register a sandbox merchant and configure:
+
+```env
+VNPAY_PAYMENT_URL=https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+VNPAY_TMN_CODE=
+VNPAY_HASH_SECRET=
+VNPAY_RETURN_URL=http://localhost:3000/api/payments/vnpay/return
+VNPAY_IP_ADDR=127.0.0.1
+```
+
+The payment response contains `paymentInfo.checkoutUrl`. Set the VNPay merchant
+IPN URL to `/api/payments/vnpay/ipn` on a publicly reachable backend. Both the
+IPN and return URL verify the HMAC-SHA512 signature and payment amount before
+marking the payment and order as successful.
+
+## Refund flow
+
+Refund requests use the public `orderCode`:
+
+```text
+POST /api/refunds
+GET /api/refunds/:id
+PATCH /api/refunds/:id
+```
+
+The request flow is `REQUESTED -> APPROVED -> RECEIVED -> REFUNDED` or
+`REJECTED`. Actual money transfer is manual for now. Admin authorization is
+intentionally not implemented yet; add an admin guard before exposing the
+processing transitions in a shared environment.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
