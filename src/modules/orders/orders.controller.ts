@@ -8,10 +8,14 @@ import {
   Post,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 import { UpdateOrderDto } from './dto/update-order.dto.js';
+import { Roles, ResponseMessage } from '../../decorator/customize.js';
+import { UserRole } from '../users/enums/user-role.enum.js';
+import { RolesGuard } from '../../auth/passport/roles.guard.js';
 
 @Controller('orders')
 export class OrdersController {
@@ -43,6 +47,8 @@ export class OrdersController {
   }
 
   @Patch()
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   update(@Req() req, @Body() updateOrderDto: UpdateOrderDto) {
     return this.ordersService.update(req.user._id, updateOrderDto);
   }

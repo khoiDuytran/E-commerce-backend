@@ -19,6 +19,7 @@ import { CreateAuthDto } from '../../auth/dto/create-auth.dto.js';
 import { MailerService } from '@nestjs-modules/mailer';
 import { CodeAuthDto } from '../../auth/dto/code-auth.dto.js';
 import { ChangePasswordAuthDto } from '../../auth/dto/change-password.dto.js';
+import { UserRole } from './enums/user-role.enum.js';
 
 @Injectable()
 export class UsersService {
@@ -48,6 +49,7 @@ export class UsersService {
       name,
       email,
       password: hashPassword,
+      role: UserRole.USER,
     });
     return {
       message: 'Tạo user thành công',
@@ -73,6 +75,7 @@ export class UsersService {
       name,
       email,
       password: hashPassword,
+      role: UserRole.USER,
       isActive: false,
       codeId: codeId,
       codeExpired: dayjs().add(5, 'minutes').toDate(),

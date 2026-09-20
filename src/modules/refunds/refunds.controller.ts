@@ -1,7 +1,19 @@
-import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { CreateRefundDto } from './dto/create-refund.dto.js';
 import { UpdateRefundDto } from './dto/update-refund.dto.js';
 import { RefundsService } from './refunds.service.js';
+import { Roles } from '../../decorator/customize.js';
+import { UserRole } from '../users/enums/user-role.enum.js';
+import { RolesGuard } from '../../auth/passport/roles.guard.js';
 
 @Controller('refunds')
 export class RefundsController {
@@ -17,8 +29,9 @@ export class RefundsController {
     return this.refundsService.findOne(id, req.user._id);
   }
 
-  // TODO: Khi có role admin, các transition APPROVED/RECEIVED/REFUNDED/REJECTED phải yêu cầu admin.
   @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   update(@Req() req, @Param('id') id: string, @Body() dto: UpdateRefundDto) {
     return this.refundsService.update(id, req.user._id, dto);
   }
