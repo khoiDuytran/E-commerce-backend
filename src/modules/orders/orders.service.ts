@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
@@ -29,8 +30,27 @@ import { UpdateOrderDto } from './dto/update-order.dto.js';
 import { Order, OrderDocument } from './schemas/order.schema.js';
 import { PaymentsService } from '../payments/payments.service.js';
 
+const DEFAULT_PAGE_SIZE = 10;
+const MAX_PAGE_SIZE = 100;
+
+// Chỉ cho phép chuyển trạng thái theo chiều tiến.
+// Huỷ đơn đi qua cancel(), hoàn tiền đi qua refund service.
+const ORDER_STATUS_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
+  [OrderStatus.PENDING]: [OrderStatus.CONFIRMED],
+  [OrderStatus.CONFIRMED]: [OrderStatus.SHIPPING],
+  [OrderStatus.SHIPPING]: [OrderStatus.DELIVERED],
+};
+
+// Đơn ở các trạng thái này không được cập nhật nữa
+const CLOSED_ORDER_STATUSES: OrderStatus[] = [
+  OrderStatus.CANCELLED,
+  OrderStatus.REFUNDED,
+];
+
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     @InjectModel(Order.name)
     private readonly orderModel: Model<OrderDocument>,
@@ -44,9 +64,19 @@ export class OrdersService {
     private readonly paymentsService: PaymentsService,
   ) {}
 
-  private async findOwnedOrThrow(
+  private assertAdmin(userRole: UserRole) {
+    if (userRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('Bạn không có quyền thực hiện thao tác này');
+    }
+  }
+
+  /**
+   * Admin truy cập được mọi đơn; user thường chỉ truy cập được đơn của mình.
+   */
+  private async findAccessibleOrThrow(
     _id: string,
     userId: string,
+    userRole: UserRole,
   ): Promise<OrderDocument> {
     validateObjectIdHelper(_id);
 
@@ -55,11 +85,89 @@ export class OrdersService {
       throw new NotFoundException('Không tìm thấy đơn hàng');
     }
 
-    if (order.user.toString() !== userId) {
+    if (userRole !== UserRole.ADMIN && order.user.toString() !== userId) {
       throw new ForbiddenException('Bạn không có quyền truy cập đơn hàng này');
     }
 
     return order;
+  }
+
+  /**
+   * Hoàn kho + hoàn lượt dùng coupon. Không throw để không che lỗi gốc
+   * của caller; lỗi hoàn tác chỉ được log lại để xử lý thủ công.
+   */
+  private async restoreStockAndCoupon(
+    stockChanges: Array<{ productId: string; quantity: number }>,
+    couponId?: string,
+  ) {
+    for (const { productId, quantity } of stockChanges) {
+      try {
+        await this.productModel.findByIdAndUpdate(productId, {
+          $inc: { stock: quantity, soldCount: -quantity },
+        });
+      } catch (error) {
+        this.logger.error(
+          `Không hoàn được kho cho sản phẩm ${productId} (+${quantity})`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+    }
+
+    if (couponId) {
+      try {
+        await this.couponModel.findByIdAndUpdate(couponId, {
+          $inc: { usedCount: -1 },
+        });
+      } catch (error) {
+        this.logger.error(
+          `Không hoàn được lượt dùng coupon ${couponId}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+    }
+  }
+
+  private async paginate(
+    baseFilter: Record<string, unknown>,
+    query: Record<string, any>,
+    current: number,
+    pageSize: number,
+  ) {
+    const { filter, sort } = aqp(query);
+    delete filter.current;
+    delete filter.pageSize;
+
+    // Gán SAU khi parse query để client không ghi đè được filter bắt buộc
+    Object.assign(filter, baseFilter);
+
+    const page = Number.isInteger(current) && current > 0 ? current : 1;
+    const size =
+      Number.isInteger(pageSize) && pageSize > 0
+        ? Math.min(pageSize, MAX_PAGE_SIZE)
+        : DEFAULT_PAGE_SIZE;
+
+    // Sort mặc định để phân trang ổn định
+    const sortOption =
+      sort && Object.keys(sort).length > 0 ? sort : { createdAt: -1 };
+
+    const [totalItems, results] = await Promise.all([
+      this.orderModel.countDocuments(filter),
+      this.orderModel
+        .find(filter)
+        .sort(sortOption as any)
+        .skip((page - 1) * size)
+        .limit(size),
+    ]);
+
+    return {
+      meta: {
+        current: page,
+        pageSize: size,
+        pages: Math.ceil(totalItems / size),
+        total: totalItems,
+      },
+      results,
+    };
   }
 
   async create(userId: string, createOrderDto: CreateOrderDto) {
@@ -110,14 +218,13 @@ export class OrdersService {
         );
       }
 
-      const shippingAddressData = shippingAddress;
       snapshotShippingAddress = {
-        fullName: shippingAddressData.fullName,
-        phone: shippingAddressData.phone,
-        province: shippingAddressData.province,
-        district: shippingAddressData.district,
-        ward: shippingAddressData.ward,
-        detail: shippingAddressData.detail,
+        fullName: shippingAddress.fullName,
+        phone: shippingAddress.phone,
+        province: shippingAddress.province,
+        district: shippingAddress.district,
+        ward: shippingAddress.ward,
+        detail: shippingAddress.detail,
       };
     }
 
@@ -134,8 +241,10 @@ export class OrdersService {
 
     for (const item of items) {
       validateObjectIdHelper(item.product);
-      if (!item.quantity || item.quantity < 1) {
-        throw new BadRequestException('quantity của từng item phải lớn hơn 0');
+      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+        throw new BadRequestException(
+          'quantity của từng item phải là số nguyên lớn hơn 0',
+        );
       }
 
       const product = await this.productModel.findById(item.product);
@@ -214,6 +323,7 @@ export class OrdersService {
     const appliedStockChanges: Array<{ productId: string; quantity: number }> =
       [];
     let couponApplied = false;
+    let createdOrderId: string | undefined;
 
     try {
       const orderCode = `ORD-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
@@ -267,10 +377,11 @@ export class OrdersService {
         paymentStatus: PaymentStatus.UNPAID,
         note,
       });
+      createdOrderId = order._id.toString();
 
       const payment = await this.paymentsService.createForOrder(
         userId,
-        order._id.toString(),
+        createdOrderId,
         order.orderCode,
         order.total,
         paymentMethod,
@@ -278,65 +389,63 @@ export class OrdersService {
 
       return { message: 'Tạo đơn hàng thành công', order, payment };
     } catch (err) {
-      // Compensation: hoàn lại những gì đã ghi thành công trước khi lỗi xảy ra
-      for (const { productId, quantity } of appliedStockChanges) {
-        await this.productModel.findByIdAndUpdate(productId, {
-          $inc: { stock: quantity, soldCount: -quantity },
-        });
+      // Compensation: hoàn lại những gì đã ghi thành công trước khi lỗi xảy ra.
+      // Xoá order trước để không để lại đơn "mồ côi" không có payment.
+      if (createdOrderId) {
+        try {
+          await this.orderModel.findByIdAndDelete(createdOrderId);
+        } catch (error) {
+          this.logger.error(
+            `Không xoá được đơn mồ côi ${createdOrderId}`,
+            error instanceof Error ? error.stack : String(error),
+          );
+        }
       }
-      if (couponApplied) {
-        await this.couponModel.findByIdAndUpdate(coupon, {
-          $inc: { usedCount: -1 },
-        });
-      }
+      await this.restoreStockAndCoupon(
+        appliedStockChanges,
+        couponApplied ? coupon : undefined,
+      );
       throw err;
     }
   }
 
+  /** Đơn hàng của chính user đang đăng nhập */
   async findAll(
     userId: string,
-    query: string,
+    query: Record<string, any>,
     current: number,
     pageSize: number,
   ) {
-    const { filter, sort } = aqp(query);
-    delete filter.current;
-    delete filter.pageSize;
-
-    filter.user = userId;
-
-    if (!current) current = 1;
-    if (!pageSize) pageSize = 10;
-
-    const totalItems = await this.orderModel.countDocuments(filter);
-    const totalPages = Math.ceil(totalItems / pageSize);
-    const skip = (current - 1) * pageSize;
-    const results = await this.orderModel
-      .find(filter)
-      .limit(pageSize)
-      .skip(skip)
-      .sort(sort as any);
-
-    return {
-      meta: { current, pageSize, pages: totalPages, total: totalItems },
-      results,
-    };
+    return this.paginate({ user: userId }, query, current, pageSize);
   }
 
-  async findOne(userId: string, _id: string) {
-    return this.findOwnedOrThrow(_id, userId);
+  /** Toàn bộ đơn hàng — chỉ admin */
+  async findAllForAdmin(
+    userRole: UserRole,
+    query: Record<string, any>,
+    current: number,
+    pageSize: number,
+  ) {
+    this.assertAdmin(userRole);
+    return this.paginate({}, query, current, pageSize);
   }
 
-  async findByOrderCode(userId: string, orderCode: string) {
+  async findOne(userId: string, userRole: UserRole, _id: string) {
+    return this.findAccessibleOrThrow(_id, userId, userRole);
+  }
+
+  async findByOrderCode(userId: string, userRole: UserRole, orderCode: string) {
     const normalizedOrderCode = orderCode?.trim();
     if (!normalizedOrderCode) {
       throw new BadRequestException('orderCode không được để trống');
     }
 
-    const order = await this.orderModel.findOne({
-      orderCode: normalizedOrderCode,
-      user: userId,
-    });
+    const filter =
+      userRole === UserRole.ADMIN
+        ? { orderCode: normalizedOrderCode }
+        : { orderCode: normalizedOrderCode, user: userId };
+
+    const order = await this.orderModel.findOne(filter);
     if (!order) {
       throw new NotFoundException('Không tìm thấy đơn hàng');
     }
@@ -350,8 +459,9 @@ export class OrdersService {
     updateOrderDto: UpdateOrderDto,
   ) {
     const { _id, ...updateData } = updateOrderDto;
+    const isAdmin = userRole === UserRole.ADMIN;
 
-    const order = await this.findOwnedOrThrow(_id, userId);
+    const order = await this.findAccessibleOrThrow(_id, userId, userRole);
 
     if (
       updateData.status === OrderStatus.REFUNDED ||
@@ -362,7 +472,17 @@ export class OrdersService {
       );
     }
 
-    if (userRole !== UserRole.ADMIN) {
+    if (updateData.status === OrderStatus.CANCELLED) {
+      throw new BadRequestException(
+        'Huỷ đơn hàng phải thực hiện qua route huỷ đơn (PATCH /orders/cancel/:id)',
+      );
+    }
+
+    if (CLOSED_ORDER_STATUSES.includes(order.status)) {
+      throw new BadRequestException('Đơn hàng đã kết thúc, không thể cập nhật');
+    }
+
+    if (!isAdmin) {
       if (updateData.status || updateData.paymentStatus) {
         throw new ForbiddenException(
           'Bạn không có quyền cập nhật trạng thái đơn hàng',
@@ -376,8 +496,18 @@ export class OrdersService {
       }
     }
 
+    if (updateData.status !== undefined && updateData.status !== order.status) {
+      const allowed = ORDER_STATUS_TRANSITIONS[order.status] ?? [];
+      if (!allowed.includes(updateData.status)) {
+        throw new BadRequestException(
+          `Không thể chuyển trạng thái đơn hàng từ ${order.status} sang ${updateData.status}`,
+        );
+      }
+    }
+
+    let payment: PaymentDocument | null = null;
     if (updateData.paymentStatus !== undefined) {
-      const payment = await this.paymentModel.findOne({ orderId: order._id });
+      payment = await this.paymentModel.findOne({ orderId: order._id });
       if (!payment) {
         throw new NotFoundException('Không tìm thấy payment của đơn hàng');
       }
@@ -389,15 +519,22 @@ export class OrdersService {
       }
     }
 
-    const allowedUpdateData =
-      userRole === UserRole.ADMIN
-        ? updateData
-        : {
-            ...(updateData.shippingAddress && {
-              shippingAddress: updateData.shippingAddress,
-            }),
-            ...(updateData.note !== undefined && { note: updateData.note }),
-          };
+    // Whitelist field cho cả user lẫn admin
+    const allowedUpdateData: Record<string, unknown> = {};
+    if (updateData.shippingAddress) {
+      allowedUpdateData.shippingAddress = updateData.shippingAddress;
+    }
+    if (updateData.note !== undefined) {
+      allowedUpdateData.note = updateData.note;
+    }
+    if (isAdmin) {
+      if (updateData.status !== undefined) {
+        allowedUpdateData.status = updateData.status;
+      }
+      if (updateData.paymentStatus !== undefined) {
+        allowedUpdateData.paymentStatus = updateData.paymentStatus;
+      }
+    }
 
     if (Object.keys(allowedUpdateData).length === 0) {
       throw new BadRequestException('Không có thông tin hợp lệ để cập nhật');
@@ -413,16 +550,88 @@ export class OrdersService {
       throw new NotFoundException('Không tìm thấy đơn hàng');
     }
 
+    // Đồng bộ trạng thái sang Payment để 2 collection không bị lệch nhau
+    if (payment && updateData.paymentStatus !== undefined) {
+      await this.paymentModel.updateOne(
+        { _id: payment._id },
+        { status: updateData.paymentStatus },
+      );
+    }
+
     return { message: 'Cập nhật đơn hàng thành công', order: updated };
   }
 
-  async remove(_id: string, userId: string) {
-    await this.findOwnedOrThrow(_id, userId);
+  /**
+   * Huỷ đơn: hoàn kho + hoàn lượt dùng coupon.
+   * - User: chỉ huỷ được đơn PENDING của mình.
+   * - Admin: huỷ được đơn PENDING hoặc CONFIRMED.
+   * - Đơn đã thanh toán phải đi qua refund service.
+   */
+  async cancel(userId: string, userRole: UserRole, _id: string) {
+    const order = await this.findAccessibleOrThrow(_id, userId, userRole);
 
-    const deleted = await this.orderModel.findByIdAndDelete(_id);
-    if (!deleted) {
+    if (order.paymentStatus !== PaymentStatus.UNPAID) {
+      throw new BadRequestException(
+        'Đơn hàng đã thanh toán, vui lòng xử lý qua refund service',
+      );
+    }
+
+    const cancellableStatuses =
+      userRole === UserRole.ADMIN
+        ? [OrderStatus.PENDING, OrderStatus.CONFIRMED]
+        : [OrderStatus.PENDING];
+
+    if (!cancellableStatuses.includes(order.status)) {
+      throw new BadRequestException(
+        'Đơn hàng ở trạng thái hiện tại không thể huỷ',
+      );
+    }
+
+    // Chuyển trạng thái nguyên tử: 2 request huỷ cùng lúc thì chỉ 1 request
+    // thắng, tránh hoàn kho 2 lần.
+    const cancelled = await this.orderModel.findOneAndUpdate(
+      {
+        _id,
+        status: { $in: cancellableStatuses },
+        paymentStatus: PaymentStatus.UNPAID,
+      },
+      { status: OrderStatus.CANCELLED },
+      { returnDocument: 'after' },
+    );
+
+    if (!cancelled) {
+      throw new BadRequestException(
+        'Đơn hàng vừa được cập nhật, không thể huỷ. Vui lòng tải lại',
+      );
+    }
+
+    await this.restoreStockAndCoupon(
+      cancelled.items.map((item) => ({
+        productId: item.product.toString(),
+        quantity: item.quantity,
+      })),
+      cancelled.coupon?.toString(),
+    );
+
+    return { message: 'Huỷ đơn hàng thành công', order: cancelled };
+  }
+
+  /** Xoá cứng — chỉ admin, và chỉ với đơn đã huỷ (dọn dữ liệu) */
+  async remove(userRole: UserRole, _id: string) {
+    this.assertAdmin(userRole);
+    validateObjectIdHelper(_id);
+
+    const order = await this.orderModel.findById(_id);
+    if (!order) {
       throw new NotFoundException('Không tìm thấy đơn hàng');
     }
+
+    if (order.status !== OrderStatus.CANCELLED) {
+      throw new BadRequestException('Chỉ được xoá đơn hàng đã huỷ');
+    }
+
+    await this.paymentModel.deleteMany({ orderId: order._id });
+    await this.orderModel.findByIdAndDelete(_id);
 
     return { message: 'Xoá đơn hàng thành công' };
   }
