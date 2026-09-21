@@ -1,8 +1,7 @@
-import { PartialType } from '@nestjs/mapped-types';
-import { CreateUserDto } from './create-user.dto.js';
-import { IsMongoId, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsEnum, IsMongoId, IsNotEmpty, IsOptional } from 'class-validator';
+import { UserRole } from '../../../common/enums/user-role.enum.js';
 
-export class UpdateUserDto extends PartialType(CreateUserDto) {
+export class UpdateUserDto {
   @IsMongoId({ message: '_id không hợp lệ' })
   @IsNotEmpty({ message: '_id không được để trống' })
   _id: string;
@@ -18,4 +17,13 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
 
   @IsOptional()
   image: string;
+}
+
+export class UpdateUserRoleDto {
+  @IsMongoId({ message: '_id không hợp lệ' })
+  @IsNotEmpty({ message: '_id không được để trống' })
+  _id: string;
+
+  @IsEnum(UserRole, { message: 'UserRole không hợp lệ' })
+  role: UserRole;
 }

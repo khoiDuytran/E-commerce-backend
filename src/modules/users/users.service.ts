@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto.js';
-import { UpdateUserDto } from './dto/update-user.dto.js';
+import { UpdateUserDto, UpdateUserRoleDto } from './dto/update-user.dto.js';
 import aqp from 'api-query-params';
 import { InjectModel } from '@nestjs/mongoose';
 import { User } from './schemas/user.schema.js';
@@ -19,7 +19,7 @@ import { CreateAuthDto } from '../../auth/dto/create-auth.dto.js';
 import { MailerService } from '@nestjs-modules/mailer';
 import { CodeAuthDto } from '../../auth/dto/code-auth.dto.js';
 import { ChangePasswordAuthDto } from '../../auth/dto/change-password.dto.js';
-import { UserRole } from './enums/user-role.enum.js';
+import { UserRole } from '../../common/enums/user-role.enum.js';
 
 @Injectable()
 export class UsersService {
@@ -275,8 +275,30 @@ export class UsersService {
     return user;
   }
 
+  async updateRole(updateUserRoleDto: UpdateUserRoleDto) {
+    const { _id, role } = updateUserRoleDto;
+    validateObjectIdHelper(_id);
+
+    const updated = await this.userModel
+      .findByIdAndUpdate(
+        _id,
+        { role },
+        {
+          returnDocument: 'after',
+          runValidators: true,
+        },
+      )
+      .select('-password');
+
+    if (!updated) {
+      throw new NotFoundException('Không tìm thấy user');
+    }
+
+    return { message: 'Cập nhật user-role thành công', user: updated };
+  }
+
   async update(updateUserDto: UpdateUserDto) {
-    const { _id, ...updateData } = updateUserDto as any;
+    const { _id, ...updateData } = updateUserDto;
     validateObjectIdHelper(_id);
 
     const forbiddenFields = [

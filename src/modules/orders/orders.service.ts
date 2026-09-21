@@ -2,19 +2,24 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
-  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { InjectModel } from '@nestjs/mongoose';
 import aqp from 'api-query-params';
-import mongoose, { Model } from 'mongoose';
+import { Model } from 'mongoose';
 import { DiscountType } from '../../common/enums/discount-type.enum.js';
 import { OrderStatus } from '../../common/enums/order-status.enum.js';
+import { PaymentMethod } from '../../common/enums/payment-method.enum.js';
 import { PaymentStatus } from '../../common/enums/payment-status.enum.js';
 import { validateObjectIdHelper } from '../../helpers/utils.js';
 import { AddressesService } from '../addresses/addresses.service.js';
 import { Coupon, CouponDocument } from '../coupons/schemas/coupon.schema.js';
+import {
+  Payment,
+  PaymentDocument,
+} from '../payments/schemas/payment.schema.js';
+import { UserRole } from '../../common/enums/user-role.enum.js';
 import {
   Product,
   ProductDocument,
@@ -33,6 +38,8 @@ export class OrdersService {
     private readonly productModel: Model<ProductDocument>,
     @InjectModel(Coupon.name)
     private readonly couponModel: Model<CouponDocument>,
+    @InjectModel(Payment.name)
+    private readonly paymentModel: Model<PaymentDocument>,
     private readonly addressesService: AddressesService,
     private readonly paymentsService: PaymentsService,
   ) {}
@@ -337,10 +344,14 @@ export class OrdersService {
     return order;
   }
 
-  async update(userId: string, updateOrderDto: UpdateOrderDto) {
+  async update(
+    userId: string,
+    userRole: UserRole,
+    updateOrderDto: UpdateOrderDto,
+  ) {
     const { _id, ...updateData } = updateOrderDto;
 
-    await this.findOwnedOrThrow(_id, userId);
+    const order = await this.findOwnedOrThrow(_id, userId);
 
     if (
       updateData.status === OrderStatus.REFUNDED ||
@@ -351,11 +362,50 @@ export class OrdersService {
       );
     }
 
-    // TODO: khi có role — chỉ admin được sửa status/paymentStatus;
-    // user thường chỉ nên sửa shippingAddress/note, và chỉ khi status còn PENDING
+    if (userRole !== UserRole.ADMIN) {
+      if (updateData.status || updateData.paymentStatus) {
+        throw new ForbiddenException(
+          'Bạn không có quyền cập nhật trạng thái đơn hàng',
+        );
+      }
+
+      if (order.status !== OrderStatus.PENDING) {
+        throw new BadRequestException(
+          'Chỉ có thể cập nhật địa chỉ giao hàng hoặc ghi chú khi đơn hàng đang chờ xử lý',
+        );
+      }
+    }
+
+    if (updateData.paymentStatus !== undefined) {
+      const payment = await this.paymentModel.findOne({ orderId: order._id });
+      if (!payment) {
+        throw new NotFoundException('Không tìm thấy payment của đơn hàng');
+      }
+
+      if (payment.paymentMethod !== PaymentMethod.COD) {
+        throw new BadRequestException(
+          'Chỉ được cập nhật paymentStatus thủ công cho đơn hàng COD',
+        );
+      }
+    }
+
+    const allowedUpdateData =
+      userRole === UserRole.ADMIN
+        ? updateData
+        : {
+            ...(updateData.shippingAddress && {
+              shippingAddress: updateData.shippingAddress,
+            }),
+            ...(updateData.note !== undefined && { note: updateData.note }),
+          };
+
+    if (Object.keys(allowedUpdateData).length === 0) {
+      throw new BadRequestException('Không có thông tin hợp lệ để cập nhật');
+    }
+
     const updated = await this.orderModel.findByIdAndUpdate(
       _id,
-      { ...updateData },
+      allowedUpdateData,
       { returnDocument: 'after', runValidators: true },
     );
 

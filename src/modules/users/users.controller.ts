@@ -12,9 +12,9 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
-import { UpdateUserDto } from './dto/update-user.dto.js';
+import { UpdateUserDto, UpdateUserRoleDto } from './dto/update-user.dto.js';
 import { Roles } from '../../decorator/customize.js';
-import { UserRole } from './enums/user-role.enum.js';
+import { UserRole } from '../../common/enums/user-role.enum.js';
 import { RolesGuard } from '../../auth/passport/roles.guard.js';
 
 @Controller('users')
@@ -55,9 +55,16 @@ export class UsersController {
     return this.usersService.findAll(query, +current, +pageSize);
   }
 
-  @Patch()
+  @Patch('role')
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN)
+  updateRole(@Body() dto: UpdateUserRoleDto) {
+    return this.usersService.updateRole(dto);
+  }
+
+  @Patch()
+  // @UseGuards(RolesGuard)
+  // @Roles(UserRole.ADMIN)
   update(@Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(updateUserDto);
   }

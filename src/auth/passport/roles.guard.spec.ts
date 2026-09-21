@@ -1,7 +1,7 @@
 import { Reflector } from '@nestjs/core';
 import { ExecutionContext } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import { UserRole } from '../../modules/users/enums/user-role.enum.js';
+import { UserRole } from '../../common/enums/user-role.enum.js';
 import { RolesGuard } from './roles.guard.js';
 
 describe('RolesGuard', () => {

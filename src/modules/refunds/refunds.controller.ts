@@ -12,7 +12,7 @@ import { CreateRefundDto } from './dto/create-refund.dto.js';
 import { UpdateRefundDto } from './dto/update-refund.dto.js';
 import { RefundsService } from './refunds.service.js';
 import { Roles } from '../../decorator/customize.js';
-import { UserRole } from '../users/enums/user-role.enum.js';
+import { UserRole } from '../../common/enums/user-role.enum.js';
 import { RolesGuard } from '../../auth/passport/roles.guard.js';
 
 @Controller('refunds')
