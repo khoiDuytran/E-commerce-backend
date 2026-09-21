@@ -1,146 +1,249 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# E-commerce Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Backend API cho hệ thống thương mại điện tử, được xây dựng bằng NestJS, TypeScript và MongoDB.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Tính năng
 
-## Description
+- Đăng ký, đăng nhập bằng email/mật khẩu và xác thực JWT.
+- Refresh token lưu trong HttpOnly cookie, có rotation và revoke khi logout.
+- Phân quyền `USER` và `ADMIN`.
+- Quản lý người dùng, thương hiệu, danh mục, sản phẩm và biến thể sản phẩm.
+- Địa chỉ giao hàng, giỏ hàng và danh sách yêu thích.
+- Tạo đơn hàng, áp dụng coupon và theo dõi trạng thái đơn hàng.
+- Thanh toán COD và tích hợp VNPay Sandbox.
+- Tạo và xử lý yêu cầu hoàn hàng.
+- Gửi email kích hoạt tài khoản và các luồng email liên quan.
+- Validation DTO bằng `class-validator` và chuẩn hóa response qua interceptor.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Công nghệ
 
-## Project setup
+- Node.js
+- NestJS 12
+- TypeScript
+- MongoDB và Mongoose
+- Passport JWT / Passport Local
+- VNPay Sandbox
+- Nodemailer và Handlebars
+- Vitest
+- Oxlint
 
-```bash
-$ npm install
+## Cấu trúc chính
+
+```text
+src/
+├── auth/                  # Đăng nhập, đăng ký, JWT, refresh token
+├── common/                # Enum dùng chung
+├── core/                  # Interceptor và thành phần lõi
+├── decorator/             # Public route, role và response metadata
+├── helpers/               # Hàm tiện ích dùng chung
+├── integrations/vnpay/    # Tích hợp VNPay
+├── mail/templates/        # Template email Handlebars
+└── modules/
+    ├── addresses/
+    ├── brands/
+    ├── carts/
+    ├── categories/
+    ├── coupons/
+    ├── orders/
+    ├── payments/
+    ├── product-variants/
+    ├── products/
+    ├── refunds/
+    ├── refresh-tokens/
+    ├── users/
+    └── wishlist/
 ```
 
-## Compile and run the project
+## Yêu cầu môi trường
+
+- Node.js 20 trở lên.
+- MongoDB đang chạy local hoặc một MongoDB URI có thể truy cập.
+- Tài khoản SMTP nếu sử dụng chức năng email.
+- Tài khoản merchant VNPay Sandbox nếu sử dụng thanh toán VNPay.
+
+## Cài đặt
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
 ```
 
-## Run tests
+Tạo file `.env` từ `.env.example`:
 
 ```bash
-# unit tests
-$ npm run test
+copy .env.example .env
+```
 
-# e2e tests
-$ npm run test:e2e
+Trên macOS/Linux:
 
-# test coverage
-$ npm run test:cov
+```bash
+cp .env.example .env
+```
+
+Sau đó điền các giá trị cấu hình cần thiết.
+
+## Chạy ứng dụng
+
+```bash
+# Development
+npm run start:dev
+
+# Chạy bình thường
+npm run start
+
+# Build production
+npm run build
+
+# Chạy bản đã build
+npm run start:prod
+```
+
+API sử dụng global prefix `/api`. Khi chạy local, server mặc định có thể truy cập tại:
+
+```text
+http://localhost:3000/api
+```
+
+## Xác thực và phân quyền
+
+Các endpoint được bảo vệ mặc định bằng JWT, ngoại trừ những route có decorator `@Public()` như đăng ký, đăng nhập và refresh token.
+
+Gửi access token bằng header:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+Refresh token được lưu trong cookie HttpOnly có tên `refresh_token`. Client cần bật gửi credentials khi gọi `login`, `refresh` và `logout`.
+
+Các thao tác tạo, sửa, xóa dữ liệu catalog yêu cầu role `ADMIN`, bao gồm:
+
+- Product
+- Brand
+- Category
+- Coupon
+- Product variant
+- Quản lý user và thay đổi role
+
+User thường chỉ được cập nhật thông tin của chính mình.
+
+## API chính
+
+Tất cả URL bên dưới đều có tiền tố `/api`.
+
+### Auth
+
+| Method | Endpoint                | Mô tả                                  |
+| ------ | ----------------------- | -------------------------------------- |
+| `POST` | `/auth/register`        | Đăng ký tài khoản                      |
+| `POST` | `/auth/login`           | Đăng nhập và nhận access token         |
+| `POST` | `/auth/refresh`         | Cấp access token mới từ refresh cookie |
+| `POST` | `/auth/logout`          | Revoke refresh token hiện tại          |
+| `POST` | `/auth/check-code`      | Kích hoạt tài khoản                    |
+| `POST` | `/auth/retry-active`    | Gửi lại mã kích hoạt                   |
+| `POST` | `/auth/retry-password`  | Gửi lại mã khôi phục mật khẩu          |
+| `POST` | `/auth/change-password` | Đổi mật khẩu                           |
+
+### Catalog
+
+| Resource            | User operations   | Admin operations               |
+| ------------------- | ----------------- | ------------------------------ |
+| `/product`          | `GET`, `GET /:id` | `POST`, `PATCH`, `DELETE /:id` |
+| `/brand`            | `GET`, `GET /:id` | `POST`, `PATCH`, `DELETE /:id` |
+| `/category`         | `GET`, `GET /:id` | `POST`, `PATCH`, `DELETE /:id` |
+| `/coupon`           | `GET`, `GET /:id` | `POST`, `PATCH`, `DELETE /:id` |
+| `/product-variants` | `GET`, `GET /:id` | `POST`, `PATCH`, `DELETE /:id` |
+
+Các endpoint danh sách hỗ trợ query phân trang như `current` và `pageSize`.
+
+### User, address, cart và wishlist
+
+| Method   | Endpoint                        | Mô tả                               |
+| -------- | ------------------------------- | ----------------------------------- |
+| `GET`    | `/users/me`                     | Lấy thông tin user hiện tại         |
+| `PATCH`  | `/users`                        | Cập nhật thông tin cá nhân          |
+| `GET`    | `/addresses`                    | Lấy địa chỉ của user                |
+| `POST`   | `/addresses`                    | Tạo địa chỉ                         |
+| `PATCH`  | `/addresses`                    | Cập nhật địa chỉ                    |
+| `PATCH`  | `/addresses/:id/default`        | Đặt địa chỉ mặc định                |
+| `DELETE` | `/addresses/:id`                | Xóa địa chỉ                         |
+| `GET`    | `/cart`                         | Lấy giỏ hàng                        |
+| `POST`   | `/cart/items`                   | Thêm sản phẩm vào giỏ               |
+| `PATCH`  | `/cart/items`                   | Cập nhật số lượng                   |
+| `DELETE` | `/cart/items/:productId`        | Xóa item, có thể truyền `variantId` |
+| `DELETE` | `/cart`                         | Xóa toàn bộ giỏ hàng                |
+| `GET`    | `/wishlist`                     | Lấy danh sách yêu thích             |
+| `POST`   | `/wishlist/products`            | Thêm sản phẩm yêu thích             |
+| `PATCH`  | `/wishlist`                     | Thay toàn bộ danh sách yêu thích    |
+| `DELETE` | `/wishlist/products/:productId` | Xóa sản phẩm yêu thích              |
+| `DELETE` | `/wishlist`                     | Xóa toàn bộ danh sách yêu thích     |
+
+### Orders và payments
+
+| Method  | Endpoint                   | Mô tả                          |
+| ------- | -------------------------- | ------------------------------ |
+| `POST`  | `/orders`                  | Tạo đơn hàng                   |
+| `GET`   | `/orders`                  | Lấy đơn hàng của user          |
+| `GET`   | `/orders/code/:orderCode`  | Tìm đơn theo mã đơn            |
+| `GET`   | `/orders/:id`              | Xem chi tiết đơn               |
+| `PATCH` | `/orders`                  | Cập nhật trạng thái theo quyền |
+| `PATCH` | `/orders/cancel/:id`       | Hủy đơn                        |
+| `POST`  | `/payments`                | Tạo payment                    |
+| `GET`   | `/payments/order/:orderId` | Lấy payment theo đơn           |
+| `POST`  | `/payments/:id/retry`      | Thử thanh toán lại             |
+| `GET`   | `/payments/vnpay/ipn`      | VNPay IPN callback             |
+| `GET`   | `/payments/vnpay/return`   | VNPay return callback          |
+
+### Refund
+
+| Method  | Endpoint       | Mô tả                          |
+| ------- | -------------- | ------------------------------ |
+| `POST`  | `/refunds`     | User tạo yêu cầu hoàn hàng     |
+| `GET`   | `/refunds/:id` | User xem yêu cầu của mình      |
+| `PATCH` | `/refunds/:id` | Admin chuyển trạng thái refund |
+
+Trạng thái refund:
+
+```text
+REQUESTED -> APPROVED -> RECEIVED -> REFUNDED
+REQUESTED -> REJECTED
 ```
 
 ## VNPay Sandbox
 
-For VNPay orders, register a sandbox merchant and configure:
+Payment VNPay trả về `paymentInfo.checkoutUrl`. Client chuyển người dùng tới URL này để thanh toán.
 
-```env
-VNPAY_PAYMENT_URL=https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
-VNPAY_TMN_CODE=
-VNPAY_HASH_SECRET=
-VNPAY_RETURN_URL=http://localhost:3000/api/payments/vnpay/return
-VNPAY_IP_ADDR=127.0.0.1
-```
-
-The payment response contains `paymentInfo.checkoutUrl`. Set the VNPay merchant
-IPN URL to `/api/payments/vnpay/ipn` on a publicly reachable backend. Both the
-IPN and return URL verify the HMAC-SHA512 signature and payment amount before
-marking the payment and order as successful.
-
-## Refund flow
-
-Refund requests use the public `orderCode`:
+Để nhận IPN, cấu hình URL công khai của backend tại:
 
 ```text
-POST /api/refunds
-GET /api/refunds/:id
-PATCH /api/refunds/:id
+GET /api/payments/vnpay/ipn
 ```
 
-The request flow is `REQUESTED -> APPROVED -> RECEIVED -> REFUNDED` or
-`REJECTED`. Actual money transfer is manual for now. Admin authorization is
-intentionally not implemented yet; add an admin guard before exposing the
-processing transitions in a shared environment.
+URL return cho người dùng là:
 
-## Deployment
+```text
+GET /api/payments/vnpay/return
+```
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+Trong môi trường local, IPN cần một tunnel hoặc backend public để VNPay có thể gọi tới. Không dùng thông tin merchant production trong môi trường phát triển.
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Test và kiểm tra chất lượng
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+# Unit test
+npm test
+
+# Test ở chế độ watch
+npm run test:watch
+
+# Coverage
+npm run test:cov
+
+# E2E test
+npm run test:e2e
+
+# Build TypeScript
+npm run build
+
+# Lint
+npm run lint
 ```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
