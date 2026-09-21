@@ -3,9 +3,9 @@ import {
   ArrayMinSize,
   IsArray,
   IsEnum,
+  IsInt,
   IsMongoId,
   IsNotEmpty,
-  IsNumber,
   IsOptional,
   IsString,
   Min,
@@ -19,7 +19,11 @@ export class OrderItemDto {
   @IsNotEmpty({ message: 'product không được để trống' })
   product: string;
 
-  @IsNumber({}, { message: 'quantity phải là số' })
+  @IsMongoId({ message: 'variant không hợp lệ' })
+  @IsOptional()
+  variant?: string;
+
+  @IsInt({ message: 'quantity phải là số' })
   @Min(1, { message: 'quantity phải lớn hơn 0' })
   quantity: number;
 }

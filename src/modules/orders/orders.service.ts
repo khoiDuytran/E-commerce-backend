@@ -20,6 +20,10 @@ import {
   Payment,
   PaymentDocument,
 } from '../payments/schemas/payment.schema.js';
+import {
+  ProductVariant,
+  ProductVariantDocument,
+} from '../product-variants/schemas/product-variant.schema.js';
 import { UserRole } from '../../common/enums/user-role.enum.js';
 import {
   Product,
@@ -60,6 +64,8 @@ export class OrdersService {
     private readonly couponModel: Model<CouponDocument>,
     @InjectModel(Payment.name)
     private readonly paymentModel: Model<PaymentDocument>,
+    @InjectModel(ProductVariant.name)
+    private readonly productVariantModel: Model<ProductVariantDocument>,
     private readonly addressesService: AddressesService,
     private readonly paymentsService: PaymentsService,
   ) {}
@@ -97,13 +103,25 @@ export class OrdersService {
    * của caller; lỗi hoàn tác chỉ được log lại để xử lý thủ công.
    */
   private async restoreStockAndCoupon(
-    stockChanges: Array<{ productId: string; quantity: number }>,
+    stockChanges: Array<{
+      productId: string;
+      variantId?: string;
+      quantity: number;
+    }>,
     couponId?: string,
   ) {
-    for (const { productId, quantity } of stockChanges) {
+    for (const { productId, variantId, quantity } of stockChanges) {
       try {
+        if (variantId) {
+          await this.productVariantModel.findByIdAndUpdate(variantId, {
+            $inc: { stock: quantity },
+          });
+        }
         await this.productModel.findByIdAndUpdate(productId, {
-          $inc: { stock: quantity, soldCount: -quantity },
+          $inc: {
+            ...(variantId ? {} : { stock: quantity }),
+            soldCount: -quantity,
+          },
         });
       } catch (error) {
         this.logger.error(
@@ -230,12 +248,17 @@ export class OrdersService {
 
     const itemSnapshots: Array<{
       product: string;
+      variant?: string;
       productName: string;
+      variantName?: string;
       image: string;
       price: number;
       quantity: number;
     }> = [];
-    const stockChecks = new Map<string, number>();
+    const stockChecks = new Map<
+      string,
+      { productId: string; variantId?: string; quantity: number }
+    >();
 
     let subtotal = 0;
 
@@ -252,25 +275,52 @@ export class OrdersService {
         throw new NotFoundException(`Không tìm thấy sản phẩm ${item.product}`);
       }
 
-      if (product.stock < item.quantity) {
+      let variant: ProductVariantDocument | null = null;
+      if (item.variant) {
+        variant = await this.productVariantModel.findOne({
+          _id: item.variant,
+          product: item.product,
+          isActive: true,
+        });
+        if (!variant) {
+          throw new NotFoundException(
+            `Không tìm thấy biến thể sản phẩm ${item.variant}`,
+          );
+        }
+        if (variant.stock < item.quantity) {
+          throw new BadRequestException(
+            `Biến thể ${variant.name} không đủ tồn kho. Còn ${variant.stock}, cần ${item.quantity}`,
+          );
+        }
+      } else if (product.stock < item.quantity) {
         throw new BadRequestException(
           `Sản phẩm ${product.name} không đủ tồn kho. Còn ${product.stock}, cần ${item.quantity}`,
         );
       }
 
       const productId = item.product.toString();
-      stockChecks.set(
-        productId,
-        (stockChecks.get(productId) ?? 0) + item.quantity,
-      );
+      const variantId = item.variant?.toString();
+      const stockKey = variantId ?? productId;
+      const stockCheck = stockChecks.get(stockKey);
+      if (stockCheck) {
+        stockCheck.quantity += item.quantity;
+      } else {
+        stockChecks.set(stockKey, {
+          productId,
+          variantId,
+          quantity: item.quantity,
+        });
+      }
 
-      const itemPrice = product.basePrice;
+      const itemPrice = variant?.price ?? product.basePrice;
       subtotal += itemPrice * item.quantity;
 
       itemSnapshots.push({
         product: productId,
+        ...(variantId && { variant: variantId }),
         productName: product.name,
-        image: product.images?.[0] ?? '',
+        ...(variant && { variantName: variant.name }),
+        image: variant?.images?.[0] ?? product.images?.[0] ?? '',
         price: itemPrice,
         quantity: item.quantity,
       });
@@ -320,27 +370,46 @@ export class OrdersService {
     const total = Math.max(subtotal - discount + shippingFee, 0);
 
     // Track lại những gì đã ghi thành công, để revert nếu bước sau fail
-    const appliedStockChanges: Array<{ productId: string; quantity: number }> =
-      [];
+    const appliedStockChanges: Array<{
+      productId: string;
+      variantId?: string;
+      quantity: number;
+    }> = [];
     let couponApplied = false;
     let createdOrderId: string | undefined;
 
     try {
       const orderCode = `ORD-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
 
-      for (const [productId, quantity] of stockChecks.entries()) {
-        const updatedProduct = await this.productModel.findOneAndUpdate(
-          { _id: productId, stock: { $gte: quantity } },
-          { $inc: { stock: -quantity, soldCount: quantity } },
-          { returnDocument: 'after' },
-        );
-
-        if (!updatedProduct) {
-          throw new BadRequestException(
-            'Có sản phẩm không còn đủ hàng để đặt đơn',
+      for (const { productId, variantId, quantity } of stockChecks.values()) {
+        if (variantId) {
+          const updatedVariant =
+            await this.productVariantModel.findOneAndUpdate(
+              { _id: variantId, product: productId, stock: { $gte: quantity } },
+              { $inc: { stock: -quantity } },
+              { returnDocument: 'after' },
+            );
+          if (!updatedVariant) {
+            throw new BadRequestException(
+              'Có biến thể sản phẩm không còn đủ hàng để đặt đơn',
+            );
+          }
+        } else {
+          const updatedProduct = await this.productModel.findOneAndUpdate(
+            { _id: productId, stock: { $gte: quantity } },
+            { $inc: { stock: -quantity } },
+            { returnDocument: 'after' },
           );
+          if (!updatedProduct) {
+            throw new BadRequestException(
+              'Có sản phẩm không còn đủ hàng để đặt đơn',
+            );
+          }
         }
-        appliedStockChanges.push({ productId, quantity });
+        await this.productModel.findByIdAndUpdate(productId, {
+          $inc: { soldCount: quantity },
+        });
+        appliedStockChanges.push({ productId, variantId, quantity });
       }
 
       if (coupon) {
@@ -608,6 +677,7 @@ export class OrdersService {
     await this.restoreStockAndCoupon(
       cancelled.items.map((item) => ({
         productId: item.product.toString(),
+        variantId: item.variant?.toString(),
         quantity: item.quantity,
       })),
       cancelled.coupon?.toString(),

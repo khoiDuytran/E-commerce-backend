@@ -63,10 +63,12 @@ export class UsersController {
   }
 
   @Patch()
-  // @UseGuards(RolesGuard)
-  // @Roles(UserRole.ADMIN)
-  update(@Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(updateUserDto);
+  update(@Req() req: any, @Body() updateUserDto: UpdateUserDto) {
+    return this.usersService.update(
+      updateUserDto,
+      req.user._id,
+      req.user.role === UserRole.ADMIN,
+    );
   }
 
   @Delete(':id')

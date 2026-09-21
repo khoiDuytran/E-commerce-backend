@@ -20,6 +20,8 @@ import { CouponModule } from './modules/coupons/coupons.module.js';
 import { OrdersModule } from './modules/orders/orders.module.js';
 import { PaymentsModule } from './modules/payments/payments.module.js';
 import { RefundsModule } from './modules/refunds/refunds.module.js';
+import { ProductVariantsModule } from './modules/product-variants/product-variants.module.js';
+import { WishlistModule } from './modules/wishlist/wishlist.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -69,6 +71,8 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     OrdersModule,
     PaymentsModule,
     RefundsModule,
+    ProductVariantsModule,
+    WishlistModule,
   ],
   controllers: [AppController],
   providers: [

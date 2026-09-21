@@ -10,8 +10,14 @@ export class OrderItem {
   @Prop({ type: Types.ObjectId, ref: 'Product', required: true })
   product: Types.ObjectId;
 
+  @Prop({ type: Types.ObjectId, ref: 'ProductVariant' })
+  variant?: Types.ObjectId;
+
   @Prop({ required: true, trim: true })
   productName: string; // snapshot tên — tránh bị ảnh hưởng nếu Product đổi tên sau này
+
+  @Prop({ trim: true })
+  variantName?: string;
 
   @Prop({ required: true })
   image: string;

@@ -68,7 +68,11 @@ export class AuthService {
       throw new UnauthorizedException('Tài khoản không tồn tại.');
     }
 
-    const payload = { username: user.email, sub: user._id };
+    const payload = {
+      username: user.email,
+      sub: user._id,
+      role: user.role,
+    };
     return this.jwtService.sign(payload);
   }
 

@@ -12,6 +12,10 @@ import {
   Product,
   ProductDocument,
 } from '../products/schemas/product.schema.js';
+import {
+  ProductVariant,
+  ProductVariantDocument,
+} from '../product-variants/schemas/product-variant.schema.js';
 import { UpdateCartDto } from './dto/update-cart.dto.js';
 
 @Injectable()
@@ -21,6 +25,8 @@ export class CartService {
     private readonly cartModel: Model<CartDocument>,
     @InjectModel(Product.name)
     private readonly productModel: Model<ProductDocument>,
+    @InjectModel(ProductVariant.name)
+    private readonly productVariantModel: Model<ProductVariantDocument>,
   ) {}
 
   private async getOrCreateCart(userId: string) {
@@ -34,7 +40,11 @@ export class CartService {
     return cart;
   }
 
-  private async validateProductStock(productId: string, quantity: number) {
+  private async validateProductStock(
+    productId: string,
+    variantId: string | undefined,
+    quantity: number,
+  ) {
     validateObjectIdHelper(productId);
 
     const product = await this.productModel.findById(productId);
@@ -46,19 +56,38 @@ export class CartService {
       throw new BadRequestException('Sản phẩm hiện không được mở bán');
     }
 
+    if (variantId) {
+      validateObjectIdHelper(variantId);
+      const variant = await this.productVariantModel.findOne({
+        _id: variantId,
+        product: productId,
+        isActive: true,
+      });
+      if (!variant) {
+        throw new NotFoundException('Biến thể sản phẩm không tồn tại');
+      }
+      if (variant.stock < quantity) {
+        throw new BadRequestException(
+          `Số lượng đặt vượt quá tồn kho biến thể hiện có (${variant.stock})`,
+        );
+      }
+      return { product, variant, price: variant.price };
+    }
+
     if (product.stock < quantity) {
       throw new BadRequestException(
         `Số lượng đặt vượt quá tồn kho hiện có (${product.stock})`,
       );
     }
 
-    return product;
+    return { product, price: product.basePrice };
   }
 
   async findByUser(userId: string) {
     const cart = await this.cartModel
       .findOne({ user: userId })
-      .populate('items.product');
+      .populate('items.product')
+      .populate('items.variant');
 
     return {
       user: userId,
@@ -68,30 +97,36 @@ export class CartService {
 
   async addItem(userId: string, itemDto: CartItemDto) {
     const cart = await this.getOrCreateCart(userId);
-    const product = await this.validateProductStock(
+    const itemData = await this.validateProductStock(
       itemDto.product,
+      itemDto.variant,
       itemDto.quantity,
     );
 
     const existedItem = cart.items.find(
-      (item) => item.product?.toString() === itemDto.product,
+      (item) =>
+        item.product?.toString() === itemDto.product &&
+        item.variant?.toString() === (itemDto.variant ?? undefined),
     );
 
     if (existedItem) {
       const newQuantity = existedItem.quantity + itemDto.quantity;
-      if (product.stock < newQuantity) {
-        throw new BadRequestException(
-          `Số lượng đặt vượt quá tồn kho hiện có (${product.stock})`,
-        );
-      }
+      await this.validateProductStock(
+        itemDto.product,
+        itemDto.variant,
+        newQuantity,
+      );
 
       existedItem.quantity = newQuantity;
-      existedItem.priceAtAdd = product.basePrice;
+      existedItem.priceAtAdd = itemData.price;
     } else {
       cart.items.push({
         product: new Types.ObjectId(itemDto.product),
+        variant: itemDto.variant
+          ? new Types.ObjectId(itemDto.variant)
+          : undefined,
         quantity: itemDto.quantity,
-        priceAtAdd: product.basePrice,
+        priceAtAdd: itemData.price,
       });
     }
 
@@ -104,25 +139,32 @@ export class CartService {
   }
 
   async updateItem(userId: string, updateCartDto: UpdateCartDto) {
-    const { product, quantity } = updateCartDto;
+    const { product, variant, quantity } = updateCartDto;
     validateObjectIdHelper(product);
 
     if (!quantity || quantity <= 0) {
-      return this.removeItem(userId, product);
+      return this.removeItem(userId, product, variant);
     }
 
     const cart = await this.getOrCreateCart(userId);
     const item = cart.items.find(
-      (cartItem) => cartItem.product?.toString() === product,
+      (cartItem) =>
+        cartItem.product?.toString() === product &&
+        cartItem.variant?.toString() === (variant ?? undefined),
     );
 
     if (!item) {
       throw new NotFoundException('Sản phẩm không có trong giỏ hàng');
     }
 
-    await this.validateProductStock(product, quantity);
+    const itemData = await this.validateProductStock(
+      product,
+      variant,
+      quantity,
+    );
 
     item.quantity = quantity;
+    item.priceAtAdd = itemData.price;
     await cart.save();
 
     return {
@@ -131,10 +173,15 @@ export class CartService {
     };
   }
 
-  async removeItem(userId: string, productId: string) {
+  async removeItem(userId: string, productId: string, variantId?: string) {
+    validateObjectIdHelper(productId);
+    if (variantId) validateObjectIdHelper(variantId);
+
     const cart = await this.getOrCreateCart(userId);
     const itemExists = cart.items.some(
-      (item) => item.product.toString() === productId,
+      (item) =>
+        item.product.toString() === productId &&
+        item.variant?.toString() === (variantId ?? undefined),
     );
 
     if (!itemExists) {
@@ -142,7 +189,11 @@ export class CartService {
     }
 
     cart.items = cart.items.filter(
-      (item) => item.product.toString() !== productId,
+      (item) =>
+        !(
+          item.product.toString() === productId &&
+          item.variant?.toString() === (variantId ?? undefined)
+        ),
     );
     await cart.save();
 

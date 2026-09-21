@@ -30,12 +30,6 @@ export class Product {
   tags: string[];
 
   @Prop({ default: 0 })
-  ratingAverage: number;
-
-  @Prop({ default: 0 })
-  ratingCount: number;
-
-  @Prop({ default: 0 })
   soldCount: number;
 
   @Prop({ required: true, min: 0, default: 0 })

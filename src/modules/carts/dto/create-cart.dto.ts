@@ -5,6 +5,7 @@ import {
   IsMongoId,
   IsNotEmpty,
   IsNumber,
+  IsOptional,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -14,6 +15,10 @@ export class CartItemDto {
   @IsNotEmpty()
   product: string;
 
+  @IsMongoId()
+  @IsOptional()
+  variant?: string;
+
   @IsNumber()
   @Min(1)
   @IsNotEmpty()
@@ -21,7 +26,7 @@ export class CartItemDto {
 
   @IsNumber()
   @Min(0)
-  @IsNotEmpty()
+  @IsOptional()
   priceAtAdd: number;
 }
 

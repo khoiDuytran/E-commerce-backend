@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import { CartService } from './carts.service.js';
@@ -32,8 +33,12 @@ export class CartController {
   }
 
   @Delete('items/:productId')
-  removeItem(@Req() req, @Param('productId') productId: string) {
-    return this.cartService.removeItem(req.user._id, productId);
+  removeItem(
+    @Req() req,
+    @Param('productId') productId: string,
+    @Query('variantId') variantId?: string,
+  ) {
+    return this.cartService.removeItem(req.user._id, productId, variantId);
   }
 
   @Delete()

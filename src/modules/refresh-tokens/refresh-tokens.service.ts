@@ -37,8 +37,9 @@ export class RefreshTokensService {
   }
 
   async validateRefreshToken(token: string): Promise<RefreshTokenDocument> {
+    const hashedToken = await hashToken(token);
     const found = await this.refreshTokenModel.findOne({
-      token,
+      token: hashedToken,
       isRevoked: false,
     });
 
@@ -62,7 +63,11 @@ export class RefreshTokensService {
   }
 
   async revokeRefreshToken(token: string): Promise<void> {
-    await this.refreshTokenModel.updateOne({ token }, { isRevoked: true });
+    const hashedToken = await hashToken(token);
+    await this.refreshTokenModel.updateOne(
+      { token: hashedToken },
+      { isRevoked: true },
+    );
   }
 
   async revokeAllForUser(userId: string): Promise<void> {

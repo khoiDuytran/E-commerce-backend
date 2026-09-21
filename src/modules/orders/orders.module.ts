@@ -8,6 +8,10 @@ import { OrdersService } from './orders.service.js';
 import { Order, OrderSchema } from './schemas/order.schema.js';
 import { Payment, PaymentSchema } from '../payments/schemas/payment.schema.js';
 import { PaymentsModule } from '../payments/payments.module.js';
+import {
+  ProductVariant,
+  ProductVariantSchema,
+} from '../product-variants/schemas/product-variant.schema.js';
 
 @Module({
   imports: [
@@ -16,6 +20,7 @@ import { PaymentsModule } from '../payments/payments.module.js';
     MongooseModule.forFeature([
       { name: Order.name, schema: OrderSchema },
       { name: Payment.name, schema: PaymentSchema },
+      { name: ProductVariant.name, schema: ProductVariantSchema },
       { name: Product.name, schema: ProductSchema },
       { name: Coupon.name, schema: CouponSchema },
     ]),

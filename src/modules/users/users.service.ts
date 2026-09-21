@@ -297,9 +297,14 @@ export class UsersService {
     return { message: 'Cập nhật user-role thành công', user: updated };
   }
 
-  async update(updateUserDto: UpdateUserDto) {
-    const { _id, ...updateData } = updateUserDto;
-    validateObjectIdHelper(_id);
+  async update(
+    updateUserDto: UpdateUserDto,
+    requesterId: string,
+    isAdmin: boolean,
+  ) {
+    const targetId = isAdmin ? updateUserDto._id : requesterId;
+    const { _id: _ignoredId, ...updateData } = updateUserDto;
+    validateObjectIdHelper(targetId);
 
     const forbiddenFields = [
       'password',
@@ -316,7 +321,7 @@ export class UsersService {
 
     const updated = await this.userModel
       .findByIdAndUpdate(
-        _id,
+        targetId,
         { ...updateData },
         { returnDocument: 'after', runValidators: true },
       )
