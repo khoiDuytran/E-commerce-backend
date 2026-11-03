@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Types } from 'mongoose';
+import { HydratedDocument, Types, Schema as MongooseSchema } from 'mongoose';
 import { OrderStatus } from '../../../common/enums/order-status.enum.js';
 import { PaymentStatus } from '../../../common/enums/payment-status.enum.js';
 
@@ -7,10 +7,10 @@ export type OrderDocument = HydratedDocument<Order>;
 
 @Schema({ _id: false })
 export class OrderItem {
-  @Prop({ type: Types.ObjectId, ref: 'Product', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Product', required: true })
   product: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'ProductVariant' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'ProductVariant' })
   variant?: Types.ObjectId;
 
   @Prop({ required: true, trim: true })
@@ -19,7 +19,8 @@ export class OrderItem {
   @Prop({ trim: true })
   variantName?: string;
 
-  @Prop({ required: true })
+  // Sản phẩm không bắt buộc có ảnh, nên ảnh trong đơn cũng không bắt buộc
+  @Prop({ default: '' })
   image: string;
 
   @Prop({ required: true, min: 0 })
@@ -60,7 +61,7 @@ export class Order {
   @Prop({ required: true, trim: true })
   orderCode: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
   user: Types.ObjectId;
 
   @Prop({ type: [OrderItemSchema], required: true })
@@ -69,10 +70,10 @@ export class Order {
   @Prop({ type: ShippingAddressSchema, required: true })
   shippingAddress: ShippingAddress;
 
-  @Prop({ type: Types.ObjectId, ref: 'Address' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Address' })
   addressId?: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'Coupon' })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Coupon' })
   coupon?: Types.ObjectId;
 
   @Prop({ required: true, min: 0 })

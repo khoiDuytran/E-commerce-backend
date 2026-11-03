@@ -1,10 +1,10 @@
+import { join } from 'node:path';
 import { Module } from '@nestjs/common';
 import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UsersModule } from './modules/users/users.module.js';
-import { BrandModule } from './modules/brands/brands.module.js';
 import { CategoryModule } from './modules/categories/categories.module.js';
 import { ProductModule } from './modules/products/products.module.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -22,13 +22,15 @@ import { PaymentsModule } from './modules/payments/payments.module.js';
 import { RefundsModule } from './modules/refunds/refunds.module.js';
 import { ProductVariantsModule } from './modules/product-variants/product-variants.module.js';
 import { WishlistModule } from './modules/wishlist/wishlist.module.js';
+import { DashboardModule } from './modules/dashboard/dashboard.module.js';
+import { CloudinaryModule } from './modules/cloudinary/cloudinary.module.js';
+import { NotificationsModule } from './modules/notifications/notifications.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
 @Module({
   imports: [
     UsersModule,
-    BrandModule,
     CategoryModule,
     AddressesModule,
     ProductModule,
@@ -57,7 +59,8 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
           from: '"No Reply" <noreply@example.com>',
         },
         template: {
-          dir: process.cwd() + '/src/mail/templates/',
+          // nest-cli copy template vào dist nên đường dẫn đúng cả khi không có src
+          dir: join(import.meta.dirname, 'mail', 'templates'),
           adapter: new HandlebarsAdapter(),
           options: {
             strict: true,
@@ -73,6 +76,9 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     RefundsModule,
     ProductVariantsModule,
     WishlistModule,
+    DashboardModule,
+    CloudinaryModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [

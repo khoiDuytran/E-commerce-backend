@@ -27,13 +27,17 @@ export class UpdateProductDto {
   @IsOptional()
   description?: string;
 
-  @IsMongoId()
+  @IsString()
   @IsOptional()
-  category: string;
+  sizeGuide?: string;
+
+  @IsString()
+  @IsOptional()
+  detailsFit?: string;
 
   @IsMongoId()
   @IsOptional()
-  brand?: string;
+  category: string;
 
   @IsArray()
   @IsUrl({}, { each: true })
@@ -44,6 +48,18 @@ export class UpdateProductDto {
   @Min(0)
   @IsOptional()
   basePrice: number;
+
+  // Giá trước giảm (không bắt buộc), phải lớn hơn hoặc bằng giá bán. Gửi null để xoá
+  @IsNumber({}, { message: 'Giá trước giảm phải là số' })
+  @Min(0, { message: 'Giá trước giảm không được âm' })
+  @IsOptional()
+  originalPrice?: number | null;
+
+  // Giá nhập (không bắt buộc), chỉ admin thấy. Gửi null để xoá
+  @IsNumber({}, { message: 'Giá nhập phải là số' })
+  @Min(0, { message: 'Giá nhập không được âm' })
+  @IsOptional()
+  costPrice?: number | null;
 
   @IsArray()
   @IsString({ each: true })

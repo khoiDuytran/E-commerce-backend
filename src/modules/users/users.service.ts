@@ -82,15 +82,20 @@ export class UsersService {
     });
 
     //send mail
-    this.mailerService.sendMail({
-      to: user.email,
-      subject: 'Activate your account at E-Commerce',
-      template: 'register',
-      context: {
-        name: user?.name ?? user.email,
-        activationCode: codeId,
-      },
-    });
+    // Tài khoản đã tạo xong: lỗi gửi mail không làm hỏng đăng ký, user có thể gửi lại qua retry-active
+    try {
+      await this.mailerService.sendMail({
+        to: user.email,
+        subject: 'Activate your account at E-Commerce',
+        template: 'register',
+        context: {
+          name: user?.name ?? user.email,
+          activationCode: codeId,
+        },
+      });
+    } catch (error) {
+      console.error(`Gửi mail thất bại tới ${user.email}:`, error);
+    }
 
     return {
       _id: user._id,
@@ -224,7 +229,7 @@ export class UsersService {
         codeId: null,
         codeExpired: null,
       });
-      return { isBeforeCheck };
+      return { isBeforeCheck, userId: user._id.toString() };
     } else {
       throw new BadRequestException('Mã code không hợp lệ hoặc đã hết hạn');
     }
@@ -269,6 +274,19 @@ export class UsersService {
     validateObjectIdHelper(id);
 
     const user = await this.userModel.findById(id).select('-password');
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy user');
+    }
+    return user;
+  }
+
+  // Chỉ lấy field hiển thị được cho chính user: không trả mật khẩu và mã xác thực
+  async findProfile(id: string) {
+    validateObjectIdHelper(id);
+
+    const user = await this.userModel
+      .findById(id)
+      .select('name email phone address image role');
     if (!user) {
       throw new NotFoundException('Không tìm thấy user');
     }

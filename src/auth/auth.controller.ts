@@ -1,6 +1,5 @@
 import {
   Controller,
-  Get,
   Post,
   Body,
   UseGuards,
@@ -17,11 +16,11 @@ import { AuthService } from './auth.service.js';
 import { CreateAuthDto } from './dto/create-auth.dto.js';
 import { LocalAuthGuard } from './passport/local-auth.guard.js';
 import { Public, ResponseMessage } from '../decorator/customize.js';
-import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
 import { RefreshTokensService } from '../modules/refresh-tokens/refresh-tokens.service.js';
 import { CodeAuthDto } from './dto/code-auth.dto.js';
 import { ChangePasswordAuthDto } from './dto/change-password.dto.js';
+import { EmailAuthDto } from './dto/email-auth.dto.js';
 import { parseDurationToMs } from '../helpers/utils.js';
 
 const REFRESH_TOKEN_COOKIE = 'refresh_token';
@@ -30,7 +29,6 @@ const REFRESH_TOKEN_COOKIE = 'refresh_token';
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
-    private readonly mailerService: MailerService,
     private readonly configService: ConfigService,
     private readonly refreshTokenService: RefreshTokensService,
   ) {}
@@ -44,7 +42,7 @@ export class AuthController {
     return {
       httpOnly: true,
       secure,
-      sameSite: secure ? ('none' as const) : ('lax' as const),
+      sameSite: 'lax',
       path: '/api/auth',
       maxAge: parseDurationToMs(refreshExpire),
     };
@@ -107,18 +105,6 @@ export class AuthController {
     return this.authService.register(createAuthDto);
   }
 
-  @Get('mail')
-  @Public()
-  testMail() {
-    this.mailerService.sendMail({
-      to: 'khoitranduy9404@gmail.com',
-      subject: 'Welcome!',
-      template: 'register.hbs',
-      context: { name: 'tranduykhoi', activationCode: '123456' },
-    });
-    return 'ok';
-  }
-
   @Post('check-code')
   @Public()
   checkCode(@Body() codeAuthDto: CodeAuthDto) {
@@ -127,13 +113,13 @@ export class AuthController {
 
   @Post('retry-active')
   @Public()
-  retryActive(@Body('email') email: string) {
+  retryActive(@Body() { email }: EmailAuthDto) {
     return this.authService.retryActive(email);
   }
 
   @Post('retry-password')
   @Public()
-  retryPassword(@Body('email') email: string) {
+  retryPassword(@Body() { email }: EmailAuthDto) {
     return this.authService.retryPassword(email);
   }
 

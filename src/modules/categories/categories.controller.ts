@@ -12,7 +12,7 @@ import {
 import { CategoryService } from './categories.service.js';
 import { CreateCategoryDto } from './dto/create-category.dto.js';
 import { UpdateCategoryDto } from './dto/update-category.dto.js';
-import { Roles } from '../../decorator/customize.js';
+import { Public, Roles } from '../../decorator/customize.js';
 import { UserRole } from '../../common/enums/user-role.enum.js';
 import { RolesGuard } from '../../auth/passport/roles.guard.js';
 
@@ -27,6 +27,7 @@ export class CategoryController {
     return this.categoryService.create(createCategoryDto);
   }
 
+  @Public()
   @Get()
   findAll(
     @Query() query: string,
@@ -36,6 +37,7 @@ export class CategoryController {
     return this.categoryService.findAll(query, +current, +pageSize);
   }
 
+  @Public()
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.categoryService.findOne(id);

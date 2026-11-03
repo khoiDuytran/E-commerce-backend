@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { CreateAuthDto, IUserPayload } from './dto/create-auth.dto.js';
 import { UsersService } from '../modules/users/users.service.js';
+import { RefreshTokensService } from '../modules/refresh-tokens/refresh-tokens.service.js';
 import { JwtService } from '@nestjs/jwt';
 import { comparePasswordHelper } from '../helpers/utils.js';
 import { CodeAuthDto } from './dto/code-auth.dto.js';
@@ -11,6 +12,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private jwtService: JwtService,
+    private readonly refreshTokensService: RefreshTokensService,
   ) {}
 
   async validateUser(email: string, password: string): Promise<any> {
@@ -59,7 +61,11 @@ export class AuthService {
   }
 
   async changePassword(data: ChangePasswordAuthDto) {
-    return await this.usersService.changePassword(data);
+    const { isBeforeCheck, userId } =
+      await this.usersService.changePassword(data);
+    // Đăng xuất mọi phiên cũ phòng trường hợp mật khẩu cũ đã bị lộ
+    await this.refreshTokensService.revokeAllForUser(userId);
+    return { isBeforeCheck };
   }
 
   async refreshAccessToken(userId: string) {

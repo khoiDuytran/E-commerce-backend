@@ -6,12 +6,15 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import aqp from 'api-query-params';
-import mongoose, { Model } from 'mongoose';
+import { Model } from 'mongoose';
 import { CreateCategoryDto } from './dto/create-category.dto.js';
 import { UpdateCategoryDto } from './dto/update-category.dto.js';
 import { Category, CategoryDocument } from './schemas/category.schema.js';
+import { CloudinaryService } from '../cloudinary/cloudinary.service.js';
 import {
   isDuplicateKeyErrorHelper,
+  MAX_PAGE_SIZE,
+  stripUnsafeOperators,
   validateObjectIdHelper,
 } from '../../helpers/utils.js';
 
@@ -20,14 +23,15 @@ export class CategoryService {
   constructor(
     @InjectModel(Category.name)
     private readonly categoryModel: Model<CategoryDocument>,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   async create(createCategoryDto: CreateCategoryDto) {
-    const { parent } = createCategoryDto as any;
+    const { parentId } = createCategoryDto;
 
-    if (parent) {
-      validateObjectIdHelper(parent);
-      const parentExists = await this.categoryModel.exists({ _id: parent });
+    if (parentId) {
+      validateObjectIdHelper(parentId);
+      const parentExists = await this.categoryModel.exists({ _id: parentId });
       if (!parentExists) {
         throw new BadRequestException('Danh mục cha không tồn tại');
       }
@@ -48,11 +52,13 @@ export class CategoryService {
 
   async findAll(query: string, current: number, pageSize: number) {
     const { filter, sort } = aqp(query);
+    stripUnsafeOperators(filter);
     delete filter.current;
     delete filter.pageSize;
 
-    if (!current) current = 1;
-    if (!pageSize) pageSize = 10;
+    if (!current || current < 1) current = 1;
+    pageSize =
+      !pageSize || pageSize < 1 ? 10 : Math.min(pageSize, MAX_PAGE_SIZE);
 
     const totalItems = await this.categoryModel.countDocuments(filter);
     const totalPages = Math.ceil(totalItems / pageSize);
@@ -77,19 +83,19 @@ export class CategoryService {
   }
 
   async update(updateCategoryDto: UpdateCategoryDto) {
-    const { _id, ...updateData } = updateCategoryDto as any;
+    const { _id, ...updateData } = updateCategoryDto;
     validateObjectIdHelper(_id);
 
-    if (updateData.parent) {
-      validateObjectIdHelper(updateData.parent);
+    if (updateData.parentId) {
+      validateObjectIdHelper(updateData.parentId);
 
       // Không cho phép danh mục tự làm cha của chính nó
-      if (updateData.parent === _id) {
+      if (updateData.parentId === _id) {
         throw new BadRequestException('Danh mục không thể là cha của chính nó');
       }
 
       const parentExists = await this.categoryModel.exists({
-        _id: updateData.parent,
+        _id: updateData.parentId,
       });
       if (!parentExists) {
         throw new BadRequestException('Danh mục cha không tồn tại');
@@ -97,14 +103,24 @@ export class CategoryService {
     }
 
     try {
-      const updated = await this.categoryModel.findByIdAndUpdate(
+      const previous = await this.categoryModel.findByIdAndUpdate(
         _id,
         { ...updateData },
-        { returnDocument: 'after', runValidators: true },
+        { returnDocument: 'before', runValidators: true },
       );
 
-      if (!updated) {
+      if (!previous) {
         throw new NotFoundException('Không tìm thấy danh mục');
+      }
+
+      const updated = await this.categoryModel.findById(_id);
+      // image là undefined khi request không đổi ảnh, là null khi xóa ảnh
+      if (
+        updateCategoryDto.image !== undefined &&
+        previous.image &&
+        previous.image !== updateCategoryDto.image
+      ) {
+        await this.cloudinaryService.deleteUnusedImages([previous.image]);
       }
 
       return { message: 'Cập nhật danh mục thành công', category: updated };
@@ -118,7 +134,7 @@ export class CategoryService {
   async remove(_id: string) {
     validateObjectIdHelper(_id);
 
-    const hasChildren = await this.categoryModel.exists({ parent: _id });
+    const hasChildren = await this.categoryModel.exists({ parentId: _id });
     if (hasChildren) {
       throw new BadRequestException(
         'Không thể xoá danh mục đang có danh mục con. Vui lòng xoá hoặc chuyển danh mục con trước.',
@@ -128,6 +144,10 @@ export class CategoryService {
     const deleted = await this.categoryModel.findByIdAndDelete(_id);
     if (!deleted) {
       throw new NotFoundException('Không tìm thấy danh mục');
+    }
+
+    if (deleted.image) {
+      await this.cloudinaryService.deleteUnusedImages([deleted.image]);
     }
 
     return { message: 'Xoá danh mục thành công' };

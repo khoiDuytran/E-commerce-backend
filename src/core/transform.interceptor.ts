@@ -1,4 +1,4 @@
-import { RESPONSE_MESSAGE } from '../decorator/customize.js';
+import { RAW_RESPONSE_KEY, RESPONSE_MESSAGE } from '../decorator/customize.js';
 import {
   Injectable,
   NestInterceptor,
@@ -26,6 +26,10 @@ export class TransformInterceptor<T> implements NestInterceptor<
     context: ExecutionContext,
     next: CallHandler,
   ): Observable<Response<T>> {
+    if (this.reflector.get<boolean>(RAW_RESPONSE_KEY, context.getHandler())) {
+      return next.handle();
+    }
+
     return next.handle().pipe(
       map((data) => ({
         statusCode: context.switchToHttp().getResponse().statusCode,

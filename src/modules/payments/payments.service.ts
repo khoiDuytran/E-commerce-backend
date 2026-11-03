@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -11,21 +12,46 @@ import { PaymentMethod } from '../../common/enums/payment-method.enum.js';
 import { PaymentStatus } from '../../common/enums/payment-status.enum.js';
 import { PaymentTransactionStatus } from '../../common/enums/payment-transaction-status.enum.js';
 import { CreatePaymentDto } from './dto/create-payment.dto.js';
-import { Payment, PaymentDocument } from './schemas/payment.schema.js';
+import {
+  Payment,
+  PaymentDocument,
+  paymentOrderFilter,
+} from './schemas/payment.schema.js';
 import { VnpayService } from '../../integrations/vnpay/vnpay.service.js';
+import { OrderStatus } from '../../common/enums/order-status.enum.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
+
+const CLOSED_ORDER_STATUSES: OrderStatus[] = [
+  OrderStatus.CANCELLED,
+  OrderStatus.REFUNDED,
+];
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     @InjectModel(Payment.name)
     private readonly paymentModel: Model<PaymentDocument>,
     @InjectModel(Order.name)
     private readonly orderModel: Model<OrderDocument>,
     private readonly vnpayService: VnpayService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
+  private assertOrderPayable(order: OrderDocument) {
+    if (CLOSED_ORDER_STATUSES.includes(order.status)) {
+      throw new BadRequestException('Đơn hàng đã đóng, không thể thanh toán');
+    }
+    if (order.paymentStatus !== PaymentStatus.UNPAID) {
+      throw new BadRequestException('Đơn hàng đã được thanh toán');
+    }
+  }
+
   private paymentView(payment: PaymentDocument) {
-    return payment.paymentMethod === PaymentMethod.VNPAY
+    // Chỉ cấp link thanh toán khi giao dịch còn đang chờ
+    return payment.paymentMethod === PaymentMethod.VNPAY &&
+      payment.status === PaymentTransactionStatus.PENDING
       ? {
           payment,
           paymentInfo: this.vnpayService.getPaymentInfo(
@@ -52,8 +78,9 @@ export class PaymentsService {
       user: userId,
     });
     if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+    this.assertOrderPayable(order);
     const payment = await this.paymentModel.findOneAndUpdate(
-      { orderId: order._id },
+      paymentOrderFilter(order._id),
       {
         $setOnInsert: {
           orderId: order._id,
@@ -67,7 +94,7 @@ export class PaymentsService {
               : undefined,
         },
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
     );
     return this.paymentView(payment);
   }
@@ -98,6 +125,8 @@ export class PaymentsService {
   }
 
   async findByOrder(orderId: string, userId: string) {
+    if (!mongoose.isValidObjectId(orderId))
+      throw new BadRequestException('order id không hợp lệ');
     const payment = await this.paymentModel.findOne({ orderId, userId });
     if (!payment) throw new NotFoundException('Không tìm thấy payment');
     return this.paymentView(payment);
@@ -105,9 +134,15 @@ export class PaymentsService {
 
   async retry(id: string, userId: string) {
     const payment = await this.ownedPaymentOrThrow(id, userId);
-    if (payment.status === PaymentTransactionStatus.SUCCESS) {
+    if (
+      payment.status === PaymentTransactionStatus.SUCCESS ||
+      payment.status === PaymentTransactionStatus.REFUNDED
+    ) {
       throw new BadRequestException('Payment đã thành công, không thể retry');
     }
+    const order = await this.orderModel.findById(payment.orderId);
+    if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+    this.assertOrderPayable(order);
     payment.status = PaymentTransactionStatus.PENDING;
     payment.transactionId = undefined;
     payment.paidAt = undefined;
@@ -142,17 +177,44 @@ export class PaymentsService {
     });
     if (!payment) return { RspCode: '01', Message: 'Order not found' };
 
-    const amount = Number(query.vnp_Amount) / 100;
-    if (!Number.isFinite(amount) || amount !== payment.amount) {
+    // So sánh theo đơn vị của VNPay (amount * 100) để tránh sai số số thực
+    if (Number(query.vnp_Amount) !== Math.round(payment.amount * 100)) {
       return { RspCode: '04', Message: 'Invalid amount' };
     }
 
-    if (payment.status === PaymentTransactionStatus.SUCCESS) {
+    if (
+      payment.status === PaymentTransactionStatus.SUCCESS ||
+      payment.status === PaymentTransactionStatus.REFUNDED
+    ) {
       return { RspCode: '00', Message: 'Confirm Success' };
     }
 
     const isSuccess =
       query.vnp_ResponseCode === '00' && query.vnp_TransactionStatus === '00';
+
+    let paidOrder: OrderDocument | null = null;
+    let needsManualRefund = false;
+    if (isSuccess) {
+      // Cùng điều kiện với cancel() trên document order: chỉ 1 trong 2 thắng.
+      // Lấy bản trước khi cập nhật để biết request nào thật sự chuyển sang PAID.
+      const order = await this.orderModel.findOneAndUpdate(
+        { _id: payment.orderId, status: { $nin: CLOSED_ORDER_STATUSES } },
+        { paymentStatus: PaymentStatus.PAID },
+        { returnDocument: 'before' },
+      );
+      if (order && order.paymentStatus !== PaymentStatus.PAID) {
+        paidOrder = order;
+      }
+      // Tiền đã bị trừ nên vẫn ghi nhận giao dịch, nhưng không mở lại đơn đã đóng
+      if (!order) {
+        payment.requiresManualRefund = true;
+        needsManualRefund = true;
+        this.logger.error(
+          `Đơn ${payment.orderCode} đã đóng nhưng nhận được tiền VNPay (${query.vnp_TransactionNo}), cần hoàn tiền thủ công`,
+        );
+      }
+    }
+
     payment.status = isSuccess
       ? PaymentTransactionStatus.SUCCESS
       : PaymentTransactionStatus.FAILED;
@@ -161,10 +223,20 @@ export class PaymentsService {
     payment.gatewayResponse = query;
     await payment.save();
 
-    if (isSuccess) {
-      await this.orderModel.findByIdAndUpdate(payment.orderId, {
-        paymentStatus: PaymentStatus.PAID,
-      });
+    // IPN có thể bị gọi lại: chỉ request chuyển đơn sang PAID mới gửi thông báo
+    if (paidOrder) {
+      await this.notificationsService.notifyPaymentStatus(
+        paidOrder,
+        PaymentStatus.PAID,
+      );
+    }
+    // IPN lặp lại sẽ dừng ở bước kiểm tra SUCCESS phía trên nên admin chỉ nhận một lần
+    if (needsManualRefund) {
+      await this.notificationsService.notifyAdminsManualRefund(
+        payment.orderCode,
+        payment.amount,
+        query.vnp_TransactionNo,
+      );
     }
 
     return { RspCode: '00', Message: 'Confirm Success' };

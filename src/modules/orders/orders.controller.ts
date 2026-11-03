@@ -8,7 +8,10 @@ import {
   Post,
   Query,
   Req,
+  UseGuards,
 } from '@nestjs/common';
+import { Roles } from '../../decorator/customize.js';
+import { RolesGuard } from '../../auth/passport/roles.guard.js';
 import { UserRole } from '../../common/enums/user-role.enum.js';
 import { OrdersService } from './orders.service.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
@@ -43,6 +46,8 @@ export class OrdersController {
 
   // Toàn bộ đơn hàng (admin) — khai báo trước ':id'
   @Get('admin/all')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   findAllForAdmin(
     @Req() req: AuthenticatedRequest,
     @Query() query: Record<string, any>,
@@ -95,6 +100,8 @@ export class OrdersController {
 
   // Xoá cứng đơn đã huỷ — chỉ admin
   @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   remove(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.ordersService.remove(req.user.role, id);
   }

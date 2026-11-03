@@ -13,12 +13,14 @@ import { DiscountType } from '../../common/enums/discount-type.enum.js';
 import { OrderStatus } from '../../common/enums/order-status.enum.js';
 import { PaymentMethod } from '../../common/enums/payment-method.enum.js';
 import { PaymentStatus } from '../../common/enums/payment-status.enum.js';
+import { PaymentTransactionStatus } from '../../common/enums/payment-transaction-status.enum.js';
 import { validateObjectIdHelper } from '../../helpers/utils.js';
 import { AddressesService } from '../addresses/addresses.service.js';
 import { Coupon, CouponDocument } from '../coupons/schemas/coupon.schema.js';
 import {
   Payment,
   PaymentDocument,
+  paymentOrderFilter,
 } from '../payments/schemas/payment.schema.js';
 import {
   ProductVariant,
@@ -29,10 +31,16 @@ import {
   Product,
   ProductDocument,
 } from '../products/schemas/product.schema.js';
+import { Cart, CartDocument } from '../carts/schemas/cart.schema.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 import { UpdateOrderDto } from './dto/update-order.dto.js';
 import { Order, OrderDocument } from './schemas/order.schema.js';
 import { PaymentsService } from '../payments/payments.service.js';
+import {
+  LOW_STOCK_THRESHOLD,
+  LowStockItem,
+  NotificationsService,
+} from '../notifications/notifications.service.js';
 
 const DEFAULT_PAGE_SIZE = 10;
 const MAX_PAGE_SIZE = 100;
@@ -66,8 +74,11 @@ export class OrdersService {
     private readonly paymentModel: Model<PaymentDocument>,
     @InjectModel(ProductVariant.name)
     private readonly productVariantModel: Model<ProductVariantDocument>,
+    @InjectModel(Cart.name)
+    private readonly cartModel: Model<CartDocument>,
     private readonly addressesService: AddressesService,
     private readonly paymentsService: PaymentsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private assertAdmin(userRole: UserRole) {
@@ -174,7 +185,8 @@ export class OrdersService {
         .find(filter)
         .sort(sortOption as any)
         .skip((page - 1) * size)
-        .limit(size),
+        .limit(size)
+        .populate('user', 'name email'),
     ]);
 
     return {
@@ -274,6 +286,9 @@ export class OrdersService {
       if (!product) {
         throw new NotFoundException(`Không tìm thấy sản phẩm ${item.product}`);
       }
+      if (!product.isActive) {
+        throw new BadRequestException(`Sản phẩm ${product.name} đã ngừng bán`);
+      }
 
       let variant: ProductVariantDocument | null = null;
       if (item.variant) {
@@ -367,7 +382,9 @@ export class OrdersService {
       }
     }
 
-    const total = Math.max(subtotal - discount + shippingFee, 0);
+    // VND không có phần lẻ; số tiền lưu phải khớp với số tiền gửi sang cổng thanh toán
+    discount = Math.round(discount);
+    const total = Math.max(Math.round(subtotal - discount + shippingFee), 0);
 
     // Track lại những gì đã ghi thành công, để revert nếu bước sau fail
     const appliedStockChanges: Array<{
@@ -377,6 +394,14 @@ export class OrdersService {
     }> = [];
     let couponApplied = false;
     let createdOrderId: string | undefined;
+    // Mặt hàng mà đơn này làm tồn kho rơi xuống ngưỡng thấp (mỗi lần trừ kho là
+    // atomic nên chỉ đúng một đơn vượt ngưỡng, admin không bị báo trùng)
+    const lowStockItems: LowStockItem[] = [];
+    const productNameOf = (productId: string) =>
+      itemSnapshots.find((item) => item.product === productId)?.productName ??
+      productId;
+    const crossedLowStock = (stock: number, quantity: number) =>
+      stock <= LOW_STOCK_THRESHOLD && stock + quantity > LOW_STOCK_THRESHOLD;
 
     try {
       const orderCode = `ORD-${Date.now().toString(36).toUpperCase()}-${randomBytes(3).toString('hex').toUpperCase()}`;
@@ -394,6 +419,13 @@ export class OrdersService {
               'Có biến thể sản phẩm không còn đủ hàng để đặt đơn',
             );
           }
+          if (crossedLowStock(updatedVariant.stock, quantity)) {
+            lowStockItems.push({
+              productName: productNameOf(productId),
+              variantName: updatedVariant.name,
+              stock: updatedVariant.stock,
+            });
+          }
         } else {
           const updatedProduct = await this.productModel.findOneAndUpdate(
             { _id: productId, stock: { $gte: quantity } },
@@ -404,6 +436,12 @@ export class OrdersService {
             throw new BadRequestException(
               'Có sản phẩm không còn đủ hàng để đặt đơn',
             );
+          }
+          if (crossedLowStock(updatedProduct.stock, quantity)) {
+            lowStockItems.push({
+              productName: updatedProduct.name,
+              stock: updatedProduct.stock,
+            });
           }
         }
         await this.productModel.findByIdAndUpdate(productId, {
@@ -455,6 +493,29 @@ export class OrdersService {
         order.total,
         paymentMethod,
       );
+
+      // Tự động dọn dẹp các items đã mua khỏi giỏ hàng của user
+      try {
+        const itemFilters = items.map((item) => {
+          if (item.variant) {
+            return { product: item.product, variant: item.variant };
+          }
+          return { product: item.product, variant: { $exists: false } };
+        });
+        await this.cartModel.updateOne(
+          { user: userId },
+          { $pull: { items: { $or: itemFilters } } },
+        );
+      } catch (cartError) {
+        this.logger.error(
+          `Không thể dọn dẹp giỏ hàng cho user ${userId} sau khi đặt đơn:`,
+          cartError instanceof Error ? cartError.stack : String(cartError),
+        );
+      }
+
+      await this.notificationsService.notifyOrderStatus(order);
+      await this.notificationsService.notifyAdminsNewOrder(order);
+      await this.notificationsService.notifyAdminsLowStock(lowStockItems);
 
       return { message: 'Tạo đơn hàng thành công', order, payment };
     } catch (err) {
@@ -576,7 +637,7 @@ export class OrdersService {
 
     let payment: PaymentDocument | null = null;
     if (updateData.paymentStatus !== undefined) {
-      payment = await this.paymentModel.findOne({ orderId: order._id });
+      payment = await this.paymentModel.findOne(paymentOrderFilter(order._id));
       if (!payment) {
         throw new NotFoundException('Không tìm thấy payment của đơn hàng');
       }
@@ -621,9 +682,31 @@ export class OrdersService {
 
     // Đồng bộ trạng thái sang Payment để 2 collection không bị lệch nhau
     if (payment && updateData.paymentStatus !== undefined) {
+      const isPaid = updateData.paymentStatus === PaymentStatus.PAID;
       await this.paymentModel.updateOne(
         { _id: payment._id },
-        { status: updateData.paymentStatus },
+        isPaid
+          ? { status: PaymentTransactionStatus.SUCCESS, paidAt: new Date() }
+          : {
+              status: PaymentTransactionStatus.PENDING,
+              $unset: { paidAt: 1 },
+            },
+      );
+    }
+
+    if (
+      allowedUpdateData.status !== undefined &&
+      order.status !== updated.status
+    ) {
+      await this.notificationsService.notifyOrderStatus(updated);
+    }
+    if (
+      allowedUpdateData.paymentStatus !== undefined &&
+      order.paymentStatus !== updated.paymentStatus
+    ) {
+      await this.notificationsService.notifyPaymentStatus(
+        updated,
+        updated.paymentStatus,
       );
     }
 
@@ -674,6 +757,20 @@ export class OrdersService {
       );
     }
 
+    // Vô hiệu hoá giao dịch đang chờ để không cấp thêm link thanh toán cho đơn đã huỷ
+    await this.paymentModel.updateOne(
+      {
+        ...paymentOrderFilter(cancelled._id),
+        status: {
+          $in: [
+            PaymentTransactionStatus.PENDING,
+            PaymentTransactionStatus.FAILED,
+          ],
+        },
+      },
+      { status: PaymentTransactionStatus.EXPIRED },
+    );
+
     await this.restoreStockAndCoupon(
       cancelled.items.map((item) => ({
         productId: item.product.toString(),
@@ -682,6 +779,8 @@ export class OrdersService {
       })),
       cancelled.coupon?.toString(),
     );
+
+    await this.notificationsService.notifyOrderStatus(cancelled);
 
     return { message: 'Huỷ đơn hàng thành công', order: cancelled };
   }
@@ -700,7 +799,7 @@ export class OrdersService {
       throw new BadRequestException('Chỉ được xoá đơn hàng đã huỷ');
     }
 
-    await this.paymentModel.deleteMany({ orderId: order._id });
+    await this.paymentModel.deleteMany(paymentOrderFilter(order._id));
     await this.orderModel.findByIdAndDelete(_id);
 
     return { message: 'Xoá đơn hàng thành công' };

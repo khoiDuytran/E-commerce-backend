@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 import { AddressesModule } from '../addresses/addresses.module.js';
 import { Coupon, CouponSchema } from '../coupons/schemas/coupon.schema.js';
 import { Product, ProductSchema } from '../products/schemas/product.schema.js';
@@ -12,9 +13,11 @@ import {
   ProductVariant,
   ProductVariantSchema,
 } from '../product-variants/schemas/product-variant.schema.js';
+import { Cart, CartSchema } from '../carts/schemas/cart.schema.js';
 
 @Module({
   imports: [
+    NotificationsModule,
     PaymentsModule,
     AddressesModule,
     MongooseModule.forFeature([
@@ -23,6 +26,7 @@ import {
       { name: ProductVariant.name, schema: ProductVariantSchema },
       { name: Product.name, schema: ProductSchema },
       { name: Coupon.name, schema: CouponSchema },
+      { name: Cart.name, schema: CartSchema },
     ]),
   ],
   controllers: [OrdersController],

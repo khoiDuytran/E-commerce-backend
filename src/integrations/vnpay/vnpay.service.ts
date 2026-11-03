@@ -1,11 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export interface VnpayPaymentInfo {
   checkoutUrl: string;
   orderCode: string;
   amount: number;
+}
+
+export interface VnpayRefundInput {
+  orderCode: string;
+  amount: number;
+  transactionNo: string;
+  transactionDate: string; // vnp_PayDate của giao dịch gốc
+  createdBy: string;
 }
 
 @Injectable()
@@ -39,6 +47,65 @@ export class VnpayService {
     return (
       expected.length === received.length && timingSafeEqual(expected, received)
     );
+  }
+
+  /** Hoàn toàn bộ giao dịch qua merchant API. Throw nếu VNPay không chấp nhận. */
+  async refund(input: VnpayRefundInput): Promise<Record<string, unknown>> {
+    const now = this.formatDate(new Date());
+    const params = {
+      vnp_RequestId: randomBytes(16).toString('hex'),
+      vnp_Version: '2.1.0',
+      vnp_Command: 'refund',
+      vnp_TmnCode: this.requiredConfig('VNPAY_TMN_CODE'),
+      vnp_TransactionType: '02', // 02: hoàn toàn phần
+      vnp_TxnRef: input.orderCode,
+      vnp_Amount: String(Math.round(input.amount * 100)),
+      vnp_TransactionNo: input.transactionNo,
+      vnp_TransactionDate: input.transactionDate,
+      vnp_CreateBy: input.createdBy,
+      vnp_CreateDate: now,
+      vnp_IpAddr: this.configService.get<string>('VNPAY_IP_ADDR', '127.0.0.1'),
+      vnp_OrderInfo: `Hoan tien don hang ${input.orderCode}`,
+    };
+    // Thứ tự trường ký do VNPay quy định, khác với thứ tự của URL thanh toán
+    const signingData = [
+      params.vnp_RequestId,
+      params.vnp_Version,
+      params.vnp_Command,
+      params.vnp_TmnCode,
+      params.vnp_TransactionType,
+      params.vnp_TxnRef,
+      params.vnp_Amount,
+      params.vnp_TransactionNo,
+      params.vnp_TransactionDate,
+      params.vnp_CreateBy,
+      params.vnp_CreateDate,
+      params.vnp_IpAddr,
+      params.vnp_OrderInfo,
+    ].join('|');
+
+    const response = await fetch(
+      this.configService.get<string>(
+        'VNPAY_API_URL',
+        'https://sandbox.vnpayment.vn/merchant_webapi/api/transaction',
+      ),
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          ...params,
+          vnp_SecureHash: this.sign(signingData),
+        }),
+        signal: AbortSignal.timeout(15000),
+      },
+    );
+    const result = (await response.json()) as Record<string, unknown>;
+    if (result.vnp_ResponseCode !== '00') {
+      throw new Error(
+        `VNPay từ chối hoàn tiền: ${String(result.vnp_ResponseCode)} ${String(result.vnp_Message ?? '')}`,
+      );
+    }
+    return result;
   }
 
   private buildPaymentParams(orderCode: string, amount: number) {

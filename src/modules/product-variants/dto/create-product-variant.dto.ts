@@ -30,6 +30,18 @@ export class CreateProductVariantDto {
   @Min(0)
   price: number;
 
+  // Giá trước giảm (không bắt buộc), phải lớn hơn hoặc bằng giá bán
+  @IsNumber({}, { message: 'Giá trước giảm phải là số' })
+  @Min(0, { message: 'Giá trước giảm không được âm' })
+  @IsOptional()
+  originalPrice?: number;
+
+  // Giá nhập (không bắt buộc), chỉ admin thấy
+  @IsNumber({}, { message: 'Giá nhập phải là số' })
+  @Min(0, { message: 'Giá nhập không được âm' })
+  @IsOptional()
+  costPrice?: number;
+
   @IsNumber()
   @Min(0)
   @IsOptional()

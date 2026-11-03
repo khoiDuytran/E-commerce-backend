@@ -22,9 +22,9 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('me')
-  getMe(@Req() req: any) {
+  async getMe(@Req() req: any) {
     return {
-      user: req.user,
+      user: await this.usersService.findProfile(req.user._id),
     };
   }
 

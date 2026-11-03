@@ -12,7 +12,7 @@ import {
 import { ProductService } from './products.service.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
-import { Roles } from '../../decorator/customize.js';
+import { Public, Roles } from '../../decorator/customize.js';
 import { UserRole } from '../../common/enums/user-role.enum.js';
 import { RolesGuard } from '../../auth/passport/roles.guard.js';
 
@@ -27,6 +27,7 @@ export class ProductController {
     return this.productService.create(createProductDto);
   }
 
+  @Public()
   @Get()
   findAll(
     @Query() query: string,
@@ -36,6 +37,19 @@ export class ProductController {
     return this.productService.findAll(query, +current, +pageSize);
   }
 
+  /** Như danh sách public nhưng kèm giá nhập, chỉ admin */
+  @Get('admin/all')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  findAllForAdmin(
+    @Query() query: string,
+    @Query('current') current: string,
+    @Query('pageSize') pageSize: string,
+  ) {
+    return this.productService.findAll(query, +current, +pageSize, true);
+  }
+
+  @Public()
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.productService.findOne(id);

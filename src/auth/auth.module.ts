@@ -19,8 +19,11 @@ import { parseDurationToMs } from '../helpers/utils.js';
         global: true,
         secret: configService.get<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: parseDurationToMs(
-            configService.get<string>('JWT_ACCESS_TOKEN_EXPIRED', '30m '),
+          // expiresIn dạng số được tính bằng giây
+          expiresIn: Math.floor(
+            parseDurationToMs(
+              configService.get<string>('JWT_ACCESS_TOKEN_EXPIRED', '30m'),
+            ) / 1000,
           ),
         },
       }),

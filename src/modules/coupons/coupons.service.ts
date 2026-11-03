@@ -1,3 +1,4 @@
+import { NotificationsService } from '../notifications/notifications.service.js';
 import {
   BadRequestException,
   ConflictException,
@@ -18,6 +19,7 @@ import {
 @Injectable()
 export class CouponService {
   constructor(
+    private readonly notificationsService: NotificationsService,
     @InjectModel(Coupon.name)
     private readonly couponModel: Model<CouponDocument>,
   ) {}
@@ -25,6 +27,8 @@ export class CouponService {
   async create(createCouponDto: CreateCouponDto) {
     try {
       const coupon = await this.couponModel.create(createCouponDto);
+      // Gửi cho mọi khách có thể lâu: chạy nền, notifyNewCoupon tự bắt lỗi
+      void this.notificationsService.notifyNewCoupon(coupon);
       return { message: 'Tạo mã giảm giá thành công', coupon };
     } catch (error) {
       if (isDuplicateKeyErrorHelper(error)) {

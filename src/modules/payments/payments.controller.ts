@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
-import { Public } from '../../decorator/customize.js';
+import { Public, RawResponse } from '../../decorator/customize.js';
 import { PaymentsService } from './payments.service.js';
 import { CreatePaymentDto } from './dto/create-payment.dto.js';
 
@@ -28,6 +28,7 @@ export class PaymentsController {
   }
 
   @Public()
+  @RawResponse()
   @Get('vnpay/ipn')
   vnpayIpn(@Query() query: Record<string, string>) {
     return this.paymentsService.handleVnpayIpn(query);

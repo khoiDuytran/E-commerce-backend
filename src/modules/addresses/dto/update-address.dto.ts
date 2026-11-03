@@ -18,7 +18,7 @@ export class UpdateAddressDto {
   fullName: string;
 
   @IsNotEmpty()
-  @IsPhoneNumber('VN')
+  @IsPhoneNumber('VN', { message: 'Số điện thoại không hợp lệ' })
   phone: string;
 
   @IsString()

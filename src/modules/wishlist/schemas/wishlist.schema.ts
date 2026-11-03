@@ -1,14 +1,19 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Types } from 'mongoose';
+import { HydratedDocument, Types, Schema as MongooseSchema } from 'mongoose';
 
 export type WishlistDocument = HydratedDocument<Wishlist>;
 
 @Schema({ timestamps: true })
 export class Wishlist {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, unique: true })
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    unique: true,
+  })
   user: Types.ObjectId;
 
-  @Prop({ type: [Types.ObjectId], ref: 'Product', default: [] })
+  @Prop({ type: [MongooseSchema.Types.ObjectId], ref: 'Product', default: [] })
   products: Types.ObjectId[];
 }
 

@@ -1,18 +1,18 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Types } from 'mongoose';
+import { HydratedDocument, Types, Schema as MongooseSchema } from 'mongoose';
 import { RefundStatus } from '../../../common/enums/refund-status.enum.js';
 
 export type RefundDocument = HydratedDocument<Refund>;
 
 @Schema({ timestamps: true })
 export class Refund {
-  @Prop({ type: Types.ObjectId, ref: 'Order', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Order', required: true })
   orderId: Types.ObjectId;
 
   @Prop({ required: true, trim: true })
   orderCode: string;
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: true })
   userId: Types.ObjectId;
 
   @Prop({ required: true, trim: true, maxlength: 500 })
@@ -21,7 +21,11 @@ export class Refund {
   @Prop({ trim: true, maxlength: 2000 })
   description?: string;
 
-  @Prop({ type: String, enum: Object.values(RefundStatus), default: RefundStatus.REQUESTED })
+  @Prop({
+    type: String,
+    enum: Object.values(RefundStatus),
+    default: RefundStatus.REQUESTED,
+  })
   status: RefundStatus;
 
   @Prop({ required: true, min: 0 })
@@ -32,6 +36,9 @@ export class Refund {
 
   @Prop()
   refundedAt?: Date;
+
+  @Prop({ type: Object })
+  gatewayResponse?: Record<string, any>; // response hoàn tiền của cổng thanh toán
 }
 
 export const RefundSchema = SchemaFactory.createForClass(Refund);
