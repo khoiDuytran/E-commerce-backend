@@ -74,12 +74,10 @@ export class AuthController {
     if (!oldToken) {
       throw new UnauthorizedException('Refresh token không tồn tại.');
     }
-    const session =
-      await this.refreshTokenService.validateRefreshToken(oldToken);
-    const refreshToken =
+    const { token: refreshToken, userId } =
       await this.refreshTokenService.rotateRefreshToken(oldToken);
     const accessToken = await this.authService.refreshAccessToken(
-      session.userId.toString(),
+      userId.toString(),
     );
     res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, this.refreshCookieOptions());
     return { access_token: accessToken };

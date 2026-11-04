@@ -7,7 +7,7 @@ Backend API cho hệ thống thương mại điện tử, được xây dựng b
 - Đăng ký, đăng nhập bằng email/mật khẩu và xác thực JWT.
 - Refresh token lưu trong HttpOnly cookie, có rotation và revoke khi logout.
 - Phân quyền `USER` và `ADMIN`.
-- Quản lý người dùng, danh mục, sản phẩm và biến thể sản phẩm (cửa hàng một thương hiệu nên không có module brand).
+- Quản lý người dùng, danh mục, sản phẩm và biến thể sản phẩm.
 - Địa chỉ giao hàng, giỏ hàng và danh sách yêu thích.
 - Tạo đơn hàng, áp dụng coupon và theo dõi trạng thái đơn hàng.
 - Thanh toán COD và tích hợp VNPay Sandbox.
