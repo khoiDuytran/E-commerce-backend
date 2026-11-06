@@ -129,6 +129,7 @@ Các thao tác tạo, sửa, xóa dữ liệu catalog yêu cầu role `ADMIN`, b
 - Category
 - Coupon
 - Product variant
+- Banner trang chủ
 - Quản lý user và thay đổi role
 
 User thường chỉ được cập nhật thông tin của chính mình.
@@ -219,7 +220,21 @@ Khi `PATCH` chỉ gửi một trong hai giá bán / trước giảm, backend so 
 | Method   | Endpoint             | Mô tả                                                                                   |
 | -------- | -------------------- | --------------------------------------------------------------------------------------- |
 | `POST`   | `/cloudinary/images` | Admin tải một ảnh lên (multipart, field `file`, tối đa 5MB, JPG/PNG/WEBP/AVIF)          |
-| `DELETE` | `/cloudinary/images` | Admin xóa ảnh theo `urls`; ảnh còn được dùng ở sản phẩm, biến thể, đơn hàng, danh mục, thương hiệu hoặc người dùng sẽ giữ lại |
+| `POST`   | `/cloudinary/videos/signature` | Admin lấy chữ ký để trình duyệt tải video thẳng lên Cloudinary (MP4/WEBM/MOV, chữ ký chỉ cho thư mục `e-commerce`) |
+| `DELETE` | `/cloudinary/images` | Admin xóa ảnh hoặc video theo `urls`; file còn được dùng ở sản phẩm, biến thể, đơn hàng, danh mục, banner hoặc người dùng sẽ giữ lại |
+
+### Banner trang chủ
+
+| Method   | Endpoint         | Quyền  | Mô tả |
+| -------- | ---------------- | ------ | ----- |
+| `GET`    | `/banner/active` | Public | Banner đang bật, theo `sortOrder` tăng dần, tối đa 10, chỉ gồm `title`, `mediaType`, `mediaUrl`, `link` |
+| `GET`    | `/banner`        | Admin  | Danh sách có phân trang, gồm cả banner đang ẩn |
+| `GET`    | `/banner/:id`    | Admin  | Chi tiết banner |
+| `POST`   | `/banner`        | Admin  | Tạo banner: `title`, `mediaType` (`image` hoặc `video`), `mediaUrl` (https), `link` (`/...` hoặc http(s)), `sortOrder`, `isActive` |
+| `PATCH`  | `/banner`        | Admin  | Cập nhật theo `_id`; gửi `link: null` để xóa đường dẫn. Đổi file thì file cũ trên Cloudinary được dọn |
+| `DELETE` | `/banner/:id`    | Admin  | Xóa banner và file trên Cloudinary |
+
+File Cloudinary của banner phải đúng loại với `mediaType`, nếu không API trả `400`.
 
 ### Refund
 

@@ -75,6 +75,13 @@ export class OrdersController {
     );
   }
 
+  @Get('stats')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  getStats() {
+    return this.ordersService.getStats();
+  }
+
   @Get(':id')
   findOne(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.ordersService.findOne(req.user._id, req.user.role, id);

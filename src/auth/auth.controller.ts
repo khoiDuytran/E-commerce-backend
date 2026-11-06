@@ -21,6 +21,7 @@ import { RefreshTokensService } from '../modules/refresh-tokens/refresh-tokens.s
 import { CodeAuthDto } from './dto/code-auth.dto.js';
 import { ChangePasswordAuthDto } from './dto/change-password.dto.js';
 import { EmailAuthDto } from './dto/email-auth.dto.js';
+import { RestoreAccountDto } from '../modules/users/dto/account-status.dto.js';
 import { parseDurationToMs } from '../helpers/utils.js';
 
 const REFRESH_TOKEN_COOKIE = 'refresh_token';
@@ -119,6 +120,18 @@ export class AuthController {
   @Public()
   retryPassword(@Body() { email }: EmailAuthDto) {
     return this.authService.retryPassword(email);
+  }
+
+  @Post('restore/code')
+  @Public()
+  requestRestoreCode(@Body() { email }: EmailAuthDto) {
+    return this.authService.requestRestoreCode(email);
+  }
+
+  @Post('restore')
+  @Public()
+  restoreAccount(@Body() { email, code }: RestoreAccountDto) {
+    return this.authService.restoreAccount(email, code);
   }
 
   @Post('change-password')

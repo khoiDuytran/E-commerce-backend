@@ -152,4 +152,19 @@ export class CategoryService {
 
     return { message: 'Xoá danh mục thành công' };
   }
+
+  async getStats() {
+    const [total, active, root] = await Promise.all([
+      this.categoryModel.countDocuments(),
+      this.categoryModel.countDocuments({ isActive: true }),
+      this.categoryModel.countDocuments({ parentId: null }),
+    ]);
+    return {
+      total,
+      active,
+      hidden: total - active,
+      root,
+      children: total - root,
+    };
+  }
 }

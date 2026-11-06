@@ -7,7 +7,8 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import aqp from 'api-query-params';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
+import { syncProductStockFromVariants } from '../../helpers/product-stock.js';
 import {
   assertOriginalPrice,
   isDuplicateKeyErrorHelper,
@@ -42,6 +43,14 @@ export class ProductVariantsService {
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
+  private syncProductStock(productId: Types.ObjectId) {
+    return syncProductStockFromVariants(
+      this.productModel,
+      this.productVariantModel,
+      productId,
+    );
+  }
+
   private async ensureProductExists(productId: string) {
     validateObjectIdHelper(productId);
     const exists = await this.productModel.exists({ _id: productId });
@@ -56,6 +65,7 @@ export class ProductVariantsService {
 
     try {
       const variant = await this.productVariantModel.create(dto);
+      await this.syncProductStock(variant.product);
       return { message: 'Tạo biến thể sản phẩm thành công', variant };
     } catch (error) {
       if (isDuplicateKeyErrorHelper(error)) {
@@ -150,6 +160,8 @@ export class ProductVariantsService {
         throw new NotFoundException('Không tìm thấy biến thể sản phẩm');
       }
       const updated = await this.productVariantModel.findById(_id);
+      // Đổi tồn kho hoặc bật/tắt biến thể đều làm thay đổi tổng tồn của sản phẩm
+      await this.syncProductStock(previous.product);
       if (dto.images) {
         await this.cloudinaryService.deleteUnusedImages(
           previous.images.filter((url) => !dto.images?.includes(url)),
@@ -202,6 +214,8 @@ export class ProductVariantsService {
     if (!deleted) {
       throw new NotFoundException('Không tìm thấy biến thể sản phẩm');
     }
+    // Xoá biến thể cuối cùng thì giữ nguyên số đang có, admin tự nhập lại tồn kho
+    await this.syncProductStock(deleted.product);
     await this.cloudinaryService.deleteUnusedImages(deleted.images);
     return { message: 'Xoá biến thể sản phẩm thành công' };
   }

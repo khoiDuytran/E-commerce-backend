@@ -36,6 +36,13 @@ export class CouponController {
     return this.couponService.findAll(query, +current, +pageSize);
   }
 
+  @Get('stats')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  getStats() {
+    return this.couponService.getStats();
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.couponService.findOne(id);

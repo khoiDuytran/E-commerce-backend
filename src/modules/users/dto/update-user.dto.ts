@@ -1,4 +1,10 @@
-import { IsEnum, IsMongoId, IsNotEmpty, IsOptional } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsMongoId,
+  IsNotEmpty,
+  IsOptional,
+} from 'class-validator';
 import { UserRole } from '../../../common/enums/user-role.enum.js';
 
 export class UpdateUserDto {
@@ -26,4 +32,13 @@ export class UpdateUserRoleDto {
 
   @IsEnum(UserRole, { message: 'UserRole không hợp lệ' })
   role: UserRole;
+}
+
+export class UpdateUserStatusDto {
+  @IsMongoId({ message: '_id không hợp lệ' })
+  @IsNotEmpty({ message: '_id không được để trống' })
+  _id: string;
+
+  @IsBoolean({ message: 'isDisabled phải là true hoặc false' })
+  isDisabled: boolean;
 }

@@ -157,7 +157,11 @@ export class NotificationsService {
     }).format(new Date(coupon.endDate));
     try {
       const customers = this.userModel
-        .find({ role: UserRole.USER, isActive: true })
+        .find({
+          role: UserRole.USER,
+          isActive: true,
+          isDisabled: { $ne: true },
+        })
         .select('_id')
         .lean()
         .cursor();
@@ -361,7 +365,11 @@ export class NotificationsService {
   private async deliverToAdmins(content: NotificationContent) {
     try {
       const admins = await this.userModel
-        .find({ role: UserRole.ADMIN, isActive: true })
+        .find({
+          role: UserRole.ADMIN,
+          isActive: true,
+          isDisabled: { $ne: true },
+        })
         .select('_id')
         .lean();
       await this.deliver(

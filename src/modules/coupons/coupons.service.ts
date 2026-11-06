@@ -106,4 +106,33 @@ export class CouponService {
 
     return { message: 'Xoá mã giảm giá thành công' };
   }
+
+  async getStats() {
+    const now = new Date();
+    // Mã đang chạy phải bật, trong thời gian hiệu lực và còn lượt dùng
+    const usable = { $expr: { $lt: ['$usedCount', '$usageLimit'] } };
+    const [total, running, upcoming, ended, usage] = await Promise.all([
+      this.couponModel.countDocuments(),
+      this.couponModel.countDocuments({
+        isActive: true,
+        startDate: { $lte: now },
+        endDate: { $gt: now },
+        ...usable,
+      }),
+      this.couponModel.countDocuments({
+        isActive: true,
+        startDate: { $gt: now },
+      }),
+      this.couponModel.countDocuments({
+        $or: [
+          { endDate: { $lte: now } },
+          { $expr: { $gte: ['$usedCount', '$usageLimit'] } },
+        ],
+      }),
+      this.couponModel.aggregate<{ used: number }>([
+        { $group: { _id: null, used: { $sum: '$usedCount' } } },
+      ]),
+    ]);
+    return { total, running, upcoming, ended, used: usage[0]?.used ?? 0 };
+  }
 }

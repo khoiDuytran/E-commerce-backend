@@ -1,4 +1,7 @@
-import { NotificationsService } from '../notifications/notifications.service.js';
+import {
+  LOW_STOCK_THRESHOLD,
+  NotificationsService,
+} from '../notifications/notifications.service.js';
 import {
   BadRequestException,
   ConflictException,
@@ -7,7 +10,11 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import aqp from 'api-query-params';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
+import {
+  ProductVariant,
+  ProductVariantDocument,
+} from '../product-variants/schemas/product-variant.schema.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
 import { Product, ProductDocument } from './schemas/product.schema.js';
@@ -36,8 +43,22 @@ export class ProductService {
     private readonly productModel: Model<ProductDocument>,
     @InjectModel(Category.name)
     private readonly categoryModel: Model<CategoryDocument>,
+    @InjectModel(ProductVariant.name)
+    private readonly variantModel: Model<ProductVariantDocument>,
     private readonly cloudinaryService: CloudinaryService,
   ) {}
+
+  // Số biến thể của từng sản phẩm, để admin biết tồn kho nào đang tính từ biến thể
+  private async countVariants(productIds: Types.ObjectId[]) {
+    const rows = await this.variantModel.aggregate<{
+      _id: Types.ObjectId;
+      count: number;
+    }>([
+      { $match: { product: { $in: productIds } } },
+      { $group: { _id: '$product', count: { $sum: 1 } } },
+    ]);
+    return new Map(rows.map((row) => [String(row._id), row.count]));
+  }
 
   private async validateCategory(categoryId?: string) {
     if (categoryId) {
@@ -99,9 +120,23 @@ export class ProductService {
       .sort(sort as any)
       .populate('category');
 
+    if (!includeCost) {
+      return {
+        meta: { current, pageSize, pages: totalPages, total: totalItems },
+        results,
+      };
+    }
+
+    // Chỉ trang admin cần biết sản phẩm nào có biến thể
+    const variantCounts = await this.countVariants(
+      results.map((product) => product._id),
+    );
     return {
       meta: { current, pageSize, pages: totalPages, total: totalItems },
-      results,
+      results: results.map((product) => ({
+        ...product.toObject(),
+        variantCount: variantCounts.get(String(product._id)) ?? 0,
+      })),
     };
   }
 
@@ -120,6 +155,14 @@ export class ProductService {
     const { _id, originalPrice, ...updateData } = updateProductDto as any;
     validateObjectIdHelper(_id);
     await this.validateCategory(updateProductDto.category);
+
+    // Có biến thể thì tồn kho sản phẩm là tổng các biến thể, không nhận số nhập tay
+    if (
+      updateData.stock !== undefined &&
+      (await this.variantModel.exists({ product: _id }))
+    ) {
+      delete updateData.stock;
+    }
 
     // Đổi một trong hai giá thì so với giá còn lại đang lưu
     let priceUpdate: { $unset?: Record<string, 1> } = {};
@@ -197,5 +240,29 @@ export class ProductService {
     await this.cloudinaryService.deleteUnusedImages(deleted.images);
 
     return { message: 'Xoá sản phẩm thành công' };
+  }
+
+  async getStats() {
+    const [total, active, lowStock, outOfStock, sold] = await Promise.all([
+      this.productModel.countDocuments(),
+      this.productModel.countDocuments({ isActive: true }),
+      // Cùng ngưỡng với thông báo sắp hết hàng gửi cho admin
+      this.productModel.countDocuments({
+        stock: { $gt: 0, $lte: LOW_STOCK_THRESHOLD },
+      }),
+      this.productModel.countDocuments({ stock: { $lte: 0 } }),
+      this.productModel.aggregate<{ sold: number }>([
+        { $group: { _id: null, sold: { $sum: '$soldCount' } } },
+      ]),
+    ]);
+    return {
+      total,
+      active,
+      hidden: total - active,
+      lowStock,
+      outOfStock,
+      lowStockThreshold: LOW_STOCK_THRESHOLD,
+      sold: sold[0]?.sold ?? 0,
+    };
   }
 }

@@ -25,6 +25,7 @@ import { WishlistModule } from './modules/wishlist/wishlist.module.js';
 import { DashboardModule } from './modules/dashboard/dashboard.module.js';
 import { CloudinaryModule } from './modules/cloudinary/cloudinary.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
+import { BannersModule } from './modules/banners/banners.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -79,6 +80,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     DashboardModule,
     CloudinaryModule,
     NotificationsModule,
+    BannersModule,
   ],
   controllers: [AppController],
   providers: [

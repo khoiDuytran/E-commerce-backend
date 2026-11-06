@@ -23,6 +23,97 @@ export class DashboardService {
     private readonly refundModel: Model<RefundDocument>,
   ) { }
 
+  /**
+   * Lợi nhuận gộp = (tiền hàng - giảm giá) - giá vốn, trên các đơn được tính doanh thu.
+   * Giá vốn lấy từ snapshot lúc đặt. Đơn có dòng hàng chưa có giá vốn (đơn cũ hoặc
+   * sản phẩm chưa nhập giá nhập) không tính được lợi nhuận nên bị loại và đếm riêng.
+   */
+  private async getProfitStats(
+    validOrderMatch: Record<string, unknown>,
+    ranges: { thisMonth: object; lastMonth: object },
+  ) {
+    const summarize = (match: object) => [
+      { $match: { ...match, hasAllCosts: true } },
+      {
+        $group: {
+          _id: null,
+          netSales: { $sum: '$netSales' },
+          cost: { $sum: '$cost' },
+          orders: { $sum: 1 },
+        },
+      },
+    ];
+    const [result] = await this.orderModel.aggregate<{
+      total: { netSales: number; cost: number; orders: number }[];
+      thisMonth: { netSales: number; cost: number; orders: number }[];
+      lastMonth: { netSales: number; cost: number; orders: number }[];
+      missingCost: { count: number }[];
+    }>([
+      { $match: validOrderMatch },
+      {
+        $addFields: {
+          netSales: { $subtract: ['$subtotal', { $ifNull: ['$discount', 0] }] },
+          cost: {
+            $sum: {
+              $map: {
+                input: '$items',
+                as: 'item',
+                in: {
+                  $multiply: [
+                    { $ifNull: ['$$item.costPrice', 0] },
+                    '$$item.quantity',
+                  ],
+                },
+              },
+            },
+          },
+          hasAllCosts: {
+            $allElementsTrue: [
+              {
+                $map: {
+                  input: '$items',
+                  as: 'item',
+                  in: { $isNumber: '$$item.costPrice' },
+                },
+              },
+            ],
+          },
+        },
+      },
+      {
+        $facet: {
+          total: summarize({}),
+          thisMonth: summarize({ createdAt: ranges.thisMonth }),
+          lastMonth: summarize({ createdAt: ranges.lastMonth }),
+          missingCost: [
+            { $match: { hasAllCosts: false } },
+            { $count: 'count' },
+          ],
+        },
+      },
+    ]);
+
+    const toProfit = (rows?: { netSales: number; cost: number; orders: number }[]) => {
+      const row = rows?.[0];
+      const netSales = row?.netSales ?? 0;
+      const profit = netSales - (row?.cost ?? 0);
+      return {
+        profit,
+        netSales,
+        orders: row?.orders ?? 0,
+        // Biên lợi nhuận gộp theo %, làm tròn 1 chữ số; null khi chưa có doanh số
+        margin: netSales > 0 ? Math.round((profit / netSales) * 1000) / 10 : null,
+      };
+    };
+
+    return {
+      total: toProfit(result?.total),
+      thisMonth: toProfit(result?.thisMonth),
+      lastMonth: toProfit(result?.lastMonth),
+      ordersMissingCost: result?.missingCost[0]?.count ?? 0,
+    };
+  }
+
   async getStats() {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -159,6 +250,12 @@ export class DashboardService {
       this.refundModel.countDocuments({ status: RefundStatus.REQUESTED }),
     ]);
 
+    // 10. Lợi nhuận gộp (chạy riêng để giữ nguyên kiểu của Promise.all ở trên)
+    const profit = await this.getProfitStats(validOrderMatch, {
+      thisMonth: { $gte: startOfThisMonth },
+      lastMonth: { $gte: startOfLastMonth, $lte: endOfLastMonth },
+    });
+
     // Parse revenue
     const totalRev = revenueStats[0]?.total[0]?.sum || 0;
     const todayRev = revenueStats[0]?.today[0]?.sum || 0;
@@ -199,6 +296,7 @@ export class DashboardService {
           lowStockTotal: productStats[1],
         },
         pendingRefunds: pendingRefundsCount,
+        profit,
       },
       charts: {
         revenueLast7Days,

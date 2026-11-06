@@ -9,6 +9,10 @@ import {
   CategorySchema,
 } from '../categories/schemas/category.schema.js';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module.js';
+import {
+  ProductVariant,
+  ProductVariantSchema,
+} from '../product-variants/schemas/product-variant.schema.js';
 
 @Module({
   imports: [
@@ -17,6 +21,7 @@ import { CloudinaryModule } from '../cloudinary/cloudinary.module.js';
     MongooseModule.forFeature([
       { name: Product.name, schema: ProductSchema },
       { name: Category.name, schema: CategorySchema },
+      { name: ProductVariant.name, schema: ProductVariantSchema },
     ]),
   ],
   controllers: [ProductController],

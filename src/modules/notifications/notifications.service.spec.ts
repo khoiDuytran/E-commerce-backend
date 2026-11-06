@@ -186,6 +186,7 @@ describe('NotificationsService', () => {
       expect(userModel.find).toHaveBeenCalledWith({
         role: UserRole.ADMIN,
         isActive: true,
+        isDisabled: { $ne: true },
       });
       expect(inserted().map((doc: any) => doc.user)).toEqual([
         ADMIN_ID,
@@ -252,6 +253,7 @@ describe('NotificationsService', () => {
       expect(userModel.find).toHaveBeenCalledWith({
         role: UserRole.USER,
         isActive: true,
+        isDisabled: { $ne: true },
       });
       expect(inserted()).toHaveLength(2);
       expect(inserted()[0]).toMatchObject({

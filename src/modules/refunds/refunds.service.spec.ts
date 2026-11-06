@@ -109,14 +109,33 @@ describe('RefundsService', () => {
       ],
     });
 
+    variantModel.findByIdAndUpdate.mockResolvedValue({ isActive: true });
+
     await service.update(REFUND_ID, { status: RefundStatus.RECEIVED });
 
     expect(productModel.findByIdAndUpdate).toHaveBeenCalledWith('p1', {
       $inc: { stock: 2, soldCount: -2 },
     });
-    expect(variantModel.findByIdAndUpdate).toHaveBeenCalledWith('v2', {
-      $inc: { stock: 1 },
+    expect(variantModel.findByIdAndUpdate).toHaveBeenCalledWith(
+      'v2',
+      { $inc: { stock: 1 } },
+      { returnDocument: 'after' },
+    );
+    // Tồn kho sản phẩm có biến thể là tổng các biến thể nên cộng theo
+    expect(productModel.findByIdAndUpdate).toHaveBeenCalledWith('p2', {
+      $inc: { stock: 1, soldCount: -1 },
     });
+  });
+
+  it('does not add an inactive variant back to the product total', async () => {
+    mockRefund(RefundStatus.APPROVED);
+    orderModel.findByIdAndUpdate.mockResolvedValue({
+      items: [{ product: 'p2', variant: 'v2', quantity: 1 }],
+    });
+    variantModel.findByIdAndUpdate.mockResolvedValue({ isActive: false });
+
+    await service.update(REFUND_ID, { status: RefundStatus.RECEIVED });
+
     expect(productModel.findByIdAndUpdate).toHaveBeenCalledWith('p2', {
       $inc: { soldCount: -1 },
     });

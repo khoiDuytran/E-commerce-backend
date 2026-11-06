@@ -53,6 +53,14 @@ export class CloudinaryController {
     return this.cloudinaryService.uploadImage(file.buffer);
   }
 
+  @Post('videos/signature')
+  @HttpCode(200)
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  createVideoUploadSignature() {
+    return this.cloudinaryService.createVideoUploadSignature();
+  }
+
   @Delete('images')
   @HttpCode(200)
   @UseGuards(RolesGuard)

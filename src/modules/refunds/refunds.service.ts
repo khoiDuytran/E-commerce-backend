@@ -13,6 +13,7 @@ import { PaymentStatus } from '../../common/enums/payment-status.enum.js';
 import { PaymentTransactionStatus } from '../../common/enums/payment-transaction-status.enum.js';
 import { RefundStatus } from '../../common/enums/refund-status.enum.js';
 import { validateObjectIdHelper } from '../../helpers/utils.js';
+import { restockItem } from '../../helpers/product-stock.js';
 import { Order, OrderDocument } from '../orders/schemas/order.schema.js';
 import {
   Payment,
@@ -276,17 +277,13 @@ export class RefundsService {
   private async restock(order: OrderDocument) {
     for (const { product, variant, quantity } of order.items) {
       try {
-        if (variant) {
-          await this.productVariantModel.findByIdAndUpdate(variant, {
-            $inc: { stock: quantity },
-          });
-        }
-        await this.productModel.findByIdAndUpdate(product, {
-          $inc: {
-            ...(variant ? {} : { stock: quantity }),
-            soldCount: -quantity,
-          },
-        });
+        await restockItem(
+          this.productModel,
+          this.productVariantModel,
+          product,
+          variant,
+          quantity,
+        );
       } catch (error) {
         this.logger.error(
           `Không hoàn được kho cho sản phẩm ${product.toString()} (+${quantity})`,

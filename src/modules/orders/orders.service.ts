@@ -15,6 +15,16 @@ import { PaymentMethod } from '../../common/enums/payment-method.enum.js';
 import { PaymentStatus } from '../../common/enums/payment-status.enum.js';
 import { PaymentTransactionStatus } from '../../common/enums/payment-transaction-status.enum.js';
 import { validateObjectIdHelper } from '../../helpers/utils.js';
+import { restockItem } from '../../helpers/product-stock.js';
+
+// select: false chỉ áp dụng cho query; đơn vừa tạo trả về cho khách phải tự bỏ giá vốn
+const hideItemCosts = (order: OrderDocument) => {
+  const plain = order.toObject();
+  return {
+    ...plain,
+    items: plain.items.map(({ costPrice: _cost, ...item }) => item),
+  };
+};
 import { AddressesService } from '../addresses/addresses.service.js';
 import { Coupon, CouponDocument } from '../coupons/schemas/coupon.schema.js';
 import {
@@ -123,17 +133,13 @@ export class OrdersService {
   ) {
     for (const { productId, variantId, quantity } of stockChanges) {
       try {
-        if (variantId) {
-          await this.productVariantModel.findByIdAndUpdate(variantId, {
-            $inc: { stock: quantity },
-          });
-        }
-        await this.productModel.findByIdAndUpdate(productId, {
-          $inc: {
-            ...(variantId ? {} : { stock: quantity }),
-            soldCount: -quantity,
-          },
-        });
+        await restockItem(
+          this.productModel,
+          this.productVariantModel,
+          productId,
+          variantId,
+          quantity,
+        );
       } catch (error) {
         this.logger.error(
           `Không hoàn được kho cho sản phẩm ${productId} (+${quantity})`,
@@ -265,6 +271,7 @@ export class OrdersService {
       variantName?: string;
       image: string;
       price: number;
+      costPrice?: number;
       quantity: number;
     }> = [];
     const stockChecks = new Map<
@@ -282,7 +289,11 @@ export class OrdersService {
         );
       }
 
-      const product = await this.productModel.findById(item.product);
+      // Lấy kèm giá nhập (mặc định bị ẩn) để lưu snapshot giá vốn vào đơn
+      const product = await this.productModel.findById(
+        item.product,
+        '+costPrice',
+      );
       if (!product) {
         throw new NotFoundException(`Không tìm thấy sản phẩm ${item.product}`);
       }
@@ -292,11 +303,14 @@ export class OrdersService {
 
       let variant: ProductVariantDocument | null = null;
       if (item.variant) {
-        variant = await this.productVariantModel.findOne({
-          _id: item.variant,
-          product: item.product,
-          isActive: true,
-        });
+        variant = await this.productVariantModel.findOne(
+          {
+            _id: item.variant,
+            product: item.product,
+            isActive: true,
+          },
+          '+costPrice',
+        );
         if (!variant) {
           throw new NotFoundException(
             `Không tìm thấy biến thể sản phẩm ${item.variant}`,
@@ -307,6 +321,13 @@ export class OrdersService {
             `Biến thể ${variant.name} không đủ tồn kho. Còn ${variant.stock}, cần ${item.quantity}`,
           );
         }
+      } else if (
+        await this.productVariantModel.exists({ product: item.product })
+      ) {
+        // Tồn kho sản phẩm có biến thể chỉ là tổng hiển thị, phải trừ ở biến thể
+        throw new BadRequestException(
+          `Vui lòng chọn phân loại cho sản phẩm ${product.name}`,
+        );
       } else if (product.stock < item.quantity) {
         throw new BadRequestException(
           `Sản phẩm ${product.name} không đủ tồn kho. Còn ${product.stock}, cần ${item.quantity}`,
@@ -329,6 +350,8 @@ export class OrdersService {
 
       const itemPrice = variant?.price ?? product.basePrice;
       subtotal += itemPrice * item.quantity;
+      // Biến thể chưa nhập giá vốn thì dùng giá vốn của sản phẩm
+      const itemCost = variant?.costPrice ?? product.costPrice;
 
       itemSnapshots.push({
         product: productId,
@@ -337,6 +360,7 @@ export class OrdersService {
         ...(variant && { variantName: variant.name }),
         image: variant?.images?.[0] ?? product.images?.[0] ?? '',
         price: itemPrice,
+        ...(itemCost != null && { costPrice: itemCost }),
         quantity: item.quantity,
       });
     }
@@ -444,8 +468,13 @@ export class OrdersService {
             });
           }
         }
+        // Sản phẩm có biến thể: tồn kho sản phẩm là tổng các biến thể nên trừ theo.
+        // Dùng $inc để các đơn chạy cùng lúc không ghi đè lẫn nhau
         await this.productModel.findByIdAndUpdate(productId, {
-          $inc: { soldCount: quantity },
+          $inc: {
+            soldCount: quantity,
+            ...(variantId ? { stock: -quantity } : {}),
+          },
         });
         appliedStockChanges.push({ productId, variantId, quantity });
       }
@@ -517,7 +546,11 @@ export class OrdersService {
       await this.notificationsService.notifyAdminsNewOrder(order);
       await this.notificationsService.notifyAdminsLowStock(lowStockItems);
 
-      return { message: 'Tạo đơn hàng thành công', order, payment };
+      return {
+        message: 'Tạo đơn hàng thành công',
+        order: hideItemCosts(order),
+        payment,
+      };
     } catch (err) {
       // Compensation: hoàn lại những gì đã ghi thành công trước khi lỗi xảy ra.
       // Xoá order trước để không để lại đơn "mồ côi" không có payment.
@@ -803,5 +836,54 @@ export class OrdersService {
     await this.orderModel.findByIdAndDelete(_id);
 
     return { message: 'Xoá đơn hàng thành công' };
+  }
+
+  async getStats() {
+    const now = new Date();
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+    const [byStatus, today, revenue] = await Promise.all([
+      this.orderModel.aggregate<{ _id: OrderStatus; count: number }>([
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      this.orderModel.countDocuments({ createdAt: { $gte: startOfToday } }),
+      // Doanh thu tính giống trang dashboard: đơn đã giao hoặc đã thanh toán,
+      // trừ đơn đã hủy/hoàn tiền
+      this.orderModel.aggregate<{ sum: number }>([
+        {
+          $match: {
+            status: { $nin: [OrderStatus.CANCELLED, OrderStatus.REFUNDED] },
+            $or: [
+              { status: OrderStatus.DELIVERED },
+              { paymentStatus: PaymentStatus.PAID },
+            ],
+          },
+        },
+        { $group: { _id: null, sum: { $sum: '$total' } } },
+      ]),
+    ]);
+    const count = (...statuses: OrderStatus[]) =>
+      byStatus
+        .filter((row) => statuses.includes(row._id))
+        .reduce((sum, row) => sum + row.count, 0);
+    return {
+      total: count(...Object.values(OrderStatus)),
+      today,
+      pending: count(OrderStatus.PENDING),
+      processing: count(OrderStatus.CONFIRMED, OrderStatus.SHIPPING),
+      delivered: count(OrderStatus.DELIVERED),
+      cancelled: count(OrderStatus.CANCELLED),
+      returns: count(
+        OrderStatus.RETURN_REQUESTED,
+        OrderStatus.RETURN_APPROVED,
+        OrderStatus.RETURN_RECEIVED,
+        OrderStatus.RETURN_REJECTED,
+        OrderStatus.REFUNDED,
+      ),
+      revenue: revenue[0]?.sum ?? 0,
+    };
   }
 }

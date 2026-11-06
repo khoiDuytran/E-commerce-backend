@@ -1,4 +1,5 @@
-import { IsEmail, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional } from 'class-validator';
+import { UserRole } from '../../../common/enums/user-role.enum.js';
 
 export class CreateUserDto {
   @IsNotEmpty({ message: 'name không được để trống' })
@@ -17,4 +18,8 @@ export class CreateUserDto {
   address: string;
   @IsOptional()
   image: string;
+
+  @IsOptional()
+  @IsEnum(UserRole, { message: 'UserRole không hợp lệ' })
+  role?: UserRole;
 }

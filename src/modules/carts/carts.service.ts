@@ -74,6 +74,11 @@ export class CartService {
       return { product, variant, price: variant.price };
     }
 
+    // Tồn kho sản phẩm có biến thể chỉ là tổng hiển thị, phải chọn biến thể để trừ kho
+    if (await this.productVariantModel.exists({ product: productId })) {
+      throw new BadRequestException('Vui lòng chọn phân loại sản phẩm');
+    }
+
     if (product.stock < quantity) {
       throw new BadRequestException(
         `Số lượng đặt vượt quá tồn kho hiện có (${product.stock})`,

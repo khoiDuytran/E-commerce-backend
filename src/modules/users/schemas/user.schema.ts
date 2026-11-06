@@ -35,6 +35,14 @@ export class User {
   @Prop({ default: false })
   isActive: boolean;
 
+  // Khác isActive (chưa xác thực email): tài khoản bị khóa không tự mở lại được bằng mã kích hoạt
+  @Prop({ default: false })
+  isDisabled: boolean;
+
+  // Ai đã khóa tài khoản: chỉ SELF mới được tự khôi phục qua email
+  @Prop({ type: String, enum: ['SELF', 'ADMIN', null], default: null })
+  disabledBy: 'SELF' | 'ADMIN' | null;
+
   @Prop()
   codeId: string;
 

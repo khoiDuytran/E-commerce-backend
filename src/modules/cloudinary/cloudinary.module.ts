@@ -12,6 +12,7 @@ import {
 } from '../product-variants/schemas/product-variant.schema.js';
 import { Product, ProductSchema } from '../products/schemas/product.schema.js';
 import { User, UserSchema } from '../users/schemas/user.schema.js';
+import { Banner, BannerSchema } from '../banners/schemas/banner.schema.js';
 import { CloudinaryController } from './cloudinary.controller.js';
 import { CloudinaryService } from './cloudinary.service.js';
 
@@ -24,6 +25,7 @@ import { CloudinaryService } from './cloudinary.service.js';
       { name: Order.name, schema: OrderSchema },
       { name: Category.name, schema: CategorySchema },
       { name: User.name, schema: UserSchema },
+      { name: Banner.name, schema: BannerSchema },
     ]),
   ],
   controllers: [CloudinaryController],

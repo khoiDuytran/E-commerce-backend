@@ -49,6 +49,13 @@ export class ProductController {
     return this.productService.findAll(query, +current, +pageSize, true);
   }
 
+  @Get('stats')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  getStats() {
+    return this.productService.getStats();
+  }
+
   @Public()
   @Get(':id')
   findOne(@Param('id') id: string) {

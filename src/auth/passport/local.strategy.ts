@@ -2,6 +2,7 @@ import { Strategy } from 'passport-local';
 import { PassportStrategy } from '@nestjs/passport';
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -21,6 +22,10 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
     const user = await this.authService.validateUser(email, password);
     if (!user) {
       throw new UnauthorizedException('Email hoặc mật khẩu không chính xác');
+    }
+    if (user.isDisabled) {
+      // Mã 403 để frontend phân biệt với tài khoản chưa kích hoạt (400)
+      throw new ForbiddenException('Tài khoản đã bị vô hiệu hóa');
     }
     if (!user.isActive) {
       // Frontend dựa vào mã 400 để phân biệt với sai mật khẩu và mở modal kích hoạt

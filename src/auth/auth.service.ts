@@ -60,6 +60,14 @@ export class AuthService {
     return await this.usersService.retryPassword(data);
   }
 
+  async requestRestoreCode(email: string) {
+    return await this.usersService.requestRestoreCode(email);
+  }
+
+  async restoreAccount(email: string, code: string) {
+    return await this.usersService.restoreAccount(email, code);
+  }
+
   async changePassword(data: ChangePasswordAuthDto) {
     const { isBeforeCheck, userId } =
       await this.usersService.changePassword(data);
@@ -72,6 +80,9 @@ export class AuthService {
     const user = await this.usersService.findById(userId);
     if (!user) {
       throw new UnauthorizedException('Tài khoản không tồn tại.');
+    }
+    if (user.isDisabled) {
+      throw new UnauthorizedException('Tài khoản đã bị vô hiệu hóa.');
     }
 
     const payload = {

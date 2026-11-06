@@ -26,6 +26,11 @@ export class OrderItem {
   @Prop({ required: true, min: 0 })
   price: number; // snapshot giá tại thời điểm đặt
 
+  // Snapshot giá nhập lúc đặt để lợi nhuận đơn cũ không đổi khi giá nhập thay đổi.
+  // Chỉ admin được thấy; trống khi sản phẩm chưa nhập giá vốn
+  @Prop({ min: 0, select: false })
+  costPrice?: number;
+
   @Prop({ required: true, min: 1 })
   quantity: number;
 }

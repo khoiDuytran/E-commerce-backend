@@ -37,6 +37,13 @@ export class CategoryController {
     return this.categoryService.findAll(query, +current, +pageSize);
   }
 
+  @Get('stats')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  getStats() {
+    return this.categoryService.getStats();
+  }
+
   @Public()
   @Get(':id')
   findOne(@Param('id') id: string) {

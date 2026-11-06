@@ -13,6 +13,7 @@ const USER_ID = '507f1f77bcf86cd799439011';
 const ORDER_ID = '507f1f77bcf86cd799439012';
 const PRODUCT_ID = '507f1f77bcf86cd799439013';
 const COUPON_ID = '507f1f77bcf86cd799439014';
+const VARIANT_ID = '507f1f77bcf86cd799439015';
 
 const shippingAddress = {
   fullName: 'A',
@@ -49,7 +50,12 @@ describe('OrdersService', () => {
       findOneAndUpdate: vi.fn(),
       findByIdAndUpdate: vi.fn(),
       findByIdAndDelete: vi.fn(),
-      create: vi.fn(async (data) => ({ ...data, _id: ORDER_ID })),
+      // Giả lập document: toObject không liệt kê để so sánh bằng nhau như object thường
+      create: vi.fn(async (data) => {
+        const doc = { ...data, _id: ORDER_ID };
+        Object.defineProperty(doc, 'toObject', { value: () => ({ ...doc }) });
+        return doc;
+      }),
     };
     productModel = {
       findById: vi.fn().mockResolvedValue({
@@ -68,7 +74,11 @@ describe('OrdersService', () => {
       findByIdAndUpdate: vi.fn().mockResolvedValue({}),
     };
     paymentModel = { findOne: vi.fn(), updateOne: vi.fn() };
-    variantModel = { findOne: vi.fn(), findByIdAndUpdate: vi.fn() };
+    variantModel = {
+      findOne: vi.fn(),
+      findByIdAndUpdate: vi.fn(),
+      exists: vi.fn().mockResolvedValue(null),
+    };
     cartModel = { updateOne: vi.fn() };
     paymentsService = {
       createForOrder: vi.fn().mockResolvedValue({ payment: {} }),
@@ -172,6 +182,158 @@ describe('OrdersService', () => {
       });
     });
 
+    describe('with a variant', () => {
+      const variantDto = (quantity = 2) =>
+        createDto({
+          items: [{ product: PRODUCT_ID, variant: VARIANT_ID, quantity }],
+        });
+
+      beforeEach(() => {
+        variantModel.findOne.mockResolvedValue({
+          name: 'Đỏ / M',
+          price: 50000,
+          stock: 10,
+          images: [],
+          isActive: true,
+        });
+        variantModel.findOneAndUpdate = vi
+          .fn()
+          .mockResolvedValue({ name: 'Đỏ / M', stock: 8 });
+      });
+
+      it('reserves stock on the variant and keeps the product total in sync', async () => {
+        await service.create(USER_ID, variantDto());
+
+        expect(variantModel.findOneAndUpdate).toHaveBeenCalledWith(
+          { _id: VARIANT_ID, product: PRODUCT_ID, stock: { $gte: 2 } },
+          { $inc: { stock: -2 } },
+          { returnDocument: 'after' },
+        );
+        // Không trừ có điều kiện ở sản phẩm: kho thật nằm ở biến thể
+        expect(productModel.findOneAndUpdate).not.toHaveBeenCalled();
+        expect(productModel.findByIdAndUpdate).toHaveBeenCalledWith(
+          PRODUCT_ID,
+          {
+            $inc: { soldCount: 2, stock: -2 },
+          },
+        );
+      });
+
+      it('does not touch the product total when the variant is sold out', async () => {
+        variantModel.findOneAndUpdate.mockResolvedValue(null);
+
+        await expect(service.create(USER_ID, variantDto())).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(productModel.findByIdAndUpdate).not.toHaveBeenCalled();
+        expect(orderModel.create).not.toHaveBeenCalled();
+      });
+
+      it('rolls back the variant and the product total when payment fails', async () => {
+        paymentsService.createForOrder.mockRejectedValue(new Error('boom'));
+        variantModel.findByIdAndUpdate.mockResolvedValue({ isActive: true });
+
+        await expect(service.create(USER_ID, variantDto())).rejects.toThrow(
+          'boom',
+        );
+
+        expect(variantModel.findByIdAndUpdate).toHaveBeenCalledWith(
+          VARIANT_ID,
+          { $inc: { stock: 2 } },
+          { returnDocument: 'after' },
+        );
+        expect(productModel.findByIdAndUpdate).toHaveBeenLastCalledWith(
+          PRODUCT_ID,
+          { $inc: { stock: 2, soldCount: -2 } },
+        );
+      });
+    });
+
+    describe('cost snapshot', () => {
+      const savedItems = () => orderModel.create.mock.calls[0][0].items;
+
+      it('stores the product cost and hides it from the response', async () => {
+        productModel.findById.mockResolvedValue({
+          name: 'P',
+          basePrice: 99999,
+          costPrice: 60000,
+          stock: 10,
+          images: [],
+          isActive: true,
+        });
+
+        const { order } = await service.create(USER_ID, createDto());
+
+        expect(productModel.findById).toHaveBeenCalledWith(
+          PRODUCT_ID,
+          '+costPrice',
+        );
+        expect(savedItems()[0].costPrice).toBe(60000);
+        // Khách nhận lại đơn vừa tạo: không được thấy giá vốn
+        expect(order.items[0]).not.toHaveProperty('costPrice');
+      });
+
+      it('prefers the variant cost and falls back to the product cost', async () => {
+        productModel.findById.mockResolvedValue({
+          name: 'P',
+          basePrice: 99999,
+          costPrice: 60000,
+          images: [],
+          isActive: true,
+        });
+        variantModel.findOne
+          .mockResolvedValueOnce({
+            name: 'A',
+            price: 50000,
+            costPrice: 30000,
+            stock: 5,
+            isActive: true,
+          })
+          .mockResolvedValueOnce({
+            name: 'B',
+            price: 50000,
+            stock: 5,
+            isActive: true,
+          });
+        variantModel.findOneAndUpdate = vi
+          .fn()
+          .mockResolvedValue({ name: 'A', stock: 4 });
+
+        await service.create(
+          USER_ID,
+          createDto({
+            items: [
+              { product: PRODUCT_ID, variant: VARIANT_ID, quantity: 1 },
+              {
+                product: PRODUCT_ID,
+                variant: '507f1f77bcf86cd799439016',
+                quantity: 1,
+              },
+            ],
+          }),
+        );
+
+        expect(savedItems().map((item: any) => item.costPrice)).toEqual([
+          30000, 60000,
+        ]);
+      });
+
+      it('leaves the cost empty when no cost price was entered', async () => {
+        await service.create(USER_ID, createDto());
+        expect(savedItems()[0]).not.toHaveProperty('costPrice');
+      });
+    });
+
+    it('requires a variant when the product has variants', async () => {
+      variantModel.exists.mockResolvedValue({ _id: VARIANT_ID });
+      await expect(service.create(USER_ID, createDto())).rejects.toThrow(
+        'Vui lòng chọn phân loại',
+      );
+      // Không được trừ thẳng vào tồn kho tổng của sản phẩm
+      expect(productModel.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(orderModel.create).not.toHaveBeenCalled();
+    });
+
     it('rejects a product that is no longer on sale', async () => {
       productModel.findById.mockResolvedValue({
         name: 'P',
@@ -230,6 +392,30 @@ describe('OrdersService', () => {
       expect(notificationsService.notifyOrderStatus).toHaveBeenCalledWith(
         expect.objectContaining({ status: OrderStatus.CANCELLED }),
       );
+    });
+
+    it('restores a variant order to the variant and the product total', async () => {
+      const variantOrder = {
+        ...openOrder,
+        items: [{ product: PRODUCT_ID, variant: VARIANT_ID, quantity: 2 }],
+      };
+      orderModel.findById.mockResolvedValue(variantOrder);
+      orderModel.findOneAndUpdate.mockResolvedValue({
+        ...variantOrder,
+        status: OrderStatus.CANCELLED,
+      });
+      variantModel.findByIdAndUpdate.mockResolvedValue({ isActive: true });
+
+      await service.cancel(USER_ID, UserRole.USER, ORDER_ID);
+
+      expect(variantModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        VARIANT_ID,
+        { $inc: { stock: 2 } },
+        { returnDocument: 'after' },
+      );
+      expect(productModel.findByIdAndUpdate).toHaveBeenCalledWith(PRODUCT_ID, {
+        $inc: { stock: 2, soldCount: -2 },
+      });
     });
 
     it('does not restore stock twice when it loses a concurrent cancel', async () => {
