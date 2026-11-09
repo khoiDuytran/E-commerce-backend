@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule, ObserveInstrument } from './app.module.js';
 import { ConfigService } from '@nestjs/config';
 import { ValidationPipe } from '@nestjs/common';
@@ -6,9 +7,17 @@ import cookieParser from 'cookie-parser';
 import { SocketIoAdapter } from './core/socket-io.adapter.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
   const port = configService.get('PORT');
+
+  // Số tầng reverse proxy (nginx, load balancer) đứng trước backend. Cần đặt khi deploy sau
+  // proxy để req.ip là IP thật của khách (rate limit đếm theo IP). Để trống khi chạy trực tiếp,
+  // nếu không client có thể tự gửi X-Forwarded-For giả để lách giới hạn
+  const trustProxyHops = Number(configService.get('TRUST_PROXY'));
+  if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
+    app.set('trust proxy', trustProxyHops);
+  }
   app.setGlobalPrefix('api', { exclude: [''] });
 
   app.use(cookieParser());

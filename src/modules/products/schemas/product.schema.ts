@@ -62,3 +62,11 @@ export class Product {
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);
+
+// Cửa hàng luôn lọc isActive=true, có hoặc không kèm category, và sắp theo mới nhất hoặc giá.
+// Thứ tự trường theo quy tắc Equality → Sort để Mongo sắp xếp bằng index thay vì sort trong bộ nhớ.
+// Sort ngược (-basePrice) vẫn dùng được index nhờ Mongo duyệt index theo chiều ngược lại.
+ProductSchema.index({ isActive: 1, category: 1, createdAt: -1 });
+ProductSchema.index({ isActive: 1, category: 1, basePrice: 1 });
+ProductSchema.index({ isActive: 1, createdAt: -1 });
+ProductSchema.index({ isActive: 1, basePrice: 1 });

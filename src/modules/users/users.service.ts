@@ -16,6 +16,7 @@ import { User, UserDocument } from './schemas/user.schema.js';
 import { Model } from 'mongoose';
 import {
   hashPasswordHelper,
+  isDuplicateKeyErrorHelper,
   validateObjectIdHelper,
 } from '../../helpers/utils.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -40,21 +41,32 @@ export class UsersService {
     return !!(await this.userModel.exists({ email }));
   }
 
+  private emailExistsError(email: string) {
+    return new BadRequestException(
+      `Email đã tồn tại: ${email}. Vui lòng sử dụng email khác.`,
+    );
+  }
+
+  // Bước exists chỉ để báo lỗi sớm; unique index mới là chốt chặn khi hai request chạy song song
+  private async createUserDoc(email: string, data: Partial<User>) {
+    try {
+      return await this.userModel.create({ ...data, email });
+    } catch (error) {
+      if (isDuplicateKeyErrorHelper(error)) throw this.emailExistsError(email);
+      throw error;
+    }
+  }
+
   async create(createUserDto: CreateUserDto) {
     const { name, email, password, role } = createUserDto;
 
     //check email
     const isExist = await this.isEmailExist(email);
-    if (isExist) {
-      throw new BadRequestException(
-        `Email đã tồn tại: ${email}. Vui lòng sử dụng email khác.`,
-      );
-    }
+    if (isExist) throw this.emailExistsError(email);
 
     const hashPassword = await hashPasswordHelper(password);
-    const user = await this.userModel.create({
+    const user = await this.createUserDoc(email, {
       name,
-      email,
       password: hashPassword,
       role: role ?? UserRole.USER,
     });
@@ -69,18 +81,13 @@ export class UsersService {
 
     //check mail
     const isExist = await this.isEmailExist(email);
-    if (isExist) {
-      throw new BadRequestException(
-        `Email đã tồn tại: ${email}. Vui lòng sử dụng email khác.`,
-      );
-    }
+    if (isExist) throw this.emailExistsError(email);
 
     //hashPassword
     const hashPassword = await hashPasswordHelper(password);
     const codeId = uuidv4();
-    const user = await this.userModel.create({
+    const user = await this.createUserDoc(email, {
       name,
-      email,
       password: hashPassword,
       role: UserRole.USER,
       isActive: false,

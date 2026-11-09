@@ -9,10 +9,20 @@ import { LocalStrategy } from './passport/local.strategy.js';
 import { JwtStrategy } from './passport/jwt.strategy.js';
 import { RefreshTokensModule } from '../modules/refresh-tokens/refresh-tokens.module.js';
 import { parseDurationToMs } from '../helpers/utils.js';
+import { ThrottlerModule } from '@nestjs/throttler';
+import {
+  DEFAULT_AUTH_THROTTLE,
+  THROTTLE_ERROR_MESSAGE,
+} from './auth-throttle.js';
 
 @Module({
   imports: [
     UsersModule,
+    // Bộ đếm lưu trong bộ nhớ: đủ khi chạy 1 instance, chạy nhiều instance cần storage Redis
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ...DEFAULT_AUTH_THROTTLE }],
+      errorMessage: THROTTLE_ERROR_MESSAGE,
+    }),
     RefreshTokensModule,
     JwtModule.registerAsync({
       useFactory: async (configService: ConfigService) => ({

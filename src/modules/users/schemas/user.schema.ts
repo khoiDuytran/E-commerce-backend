@@ -10,7 +10,9 @@ export class User {
   @Prop()
   name: string;
 
-  @Prop()
+  // unique: chặn tạo trùng khi hai request đăng ký cùng lúc vượt qua bước kiểm tra exists.
+  // lowercase/trim cũng áp dụng cho điều kiện truy vấn, nên mọi findOne({ email }) tự chuẩn hóa
+  @Prop({ required: true, unique: true, lowercase: true, trim: true })
   @IsEmail()
   email: string;
 

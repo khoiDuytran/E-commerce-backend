@@ -23,9 +23,18 @@ import { ChangePasswordAuthDto } from './dto/change-password.dto.js';
 import { EmailAuthDto } from './dto/email-auth.dto.js';
 import { RestoreAccountDto } from '../modules/users/dto/account-status.dto.js';
 import { parseDurationToMs } from '../helpers/utils.js';
+import { SkipThrottle, ThrottlerGuard } from '@nestjs/throttler';
+import {
+  LoginThrottle,
+  RegisterThrottle,
+  SendMailThrottle,
+  VerifyCodeThrottle,
+} from './auth-throttle.js';
 
 const REFRESH_TOKEN_COOKIE = 'refresh_token';
 
+// Guard cấp class chạy trước LocalAuthGuard của login, nên lần đăng nhập sai (401) vẫn bị đếm
+@UseGuards(ThrottlerGuard)
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -50,6 +59,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @LoginThrottle()
   @UseGuards(LocalAuthGuard)
   @Public()
   @ResponseMessage('Login success')
@@ -65,7 +75,9 @@ export class AuthController {
     return result;
   }
 
+  // refresh/logout do server Next gọi (chung IP) và đã cần refresh token hợp lệ
   @Post('refresh')
+  @SkipThrottle()
   @Public()
   async refresh(
     @Request() req: ExpressRequest,
@@ -85,6 +97,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @SkipThrottle()
   @Public()
   async logout(
     @Request() req: ExpressRequest,
@@ -99,42 +112,49 @@ export class AuthController {
   }
 
   @Post('register')
+  @RegisterThrottle()
   @Public()
   register(@Body() createAuthDto: CreateAuthDto) {
     return this.authService.register(createAuthDto);
   }
 
   @Post('check-code')
+  @VerifyCodeThrottle()
   @Public()
   checkCode(@Body() codeAuthDto: CodeAuthDto) {
     return this.authService.checkCode(codeAuthDto);
   }
 
   @Post('retry-active')
+  @SendMailThrottle()
   @Public()
   retryActive(@Body() { email }: EmailAuthDto) {
     return this.authService.retryActive(email);
   }
 
   @Post('retry-password')
+  @SendMailThrottle()
   @Public()
   retryPassword(@Body() { email }: EmailAuthDto) {
     return this.authService.retryPassword(email);
   }
 
   @Post('restore/code')
+  @SendMailThrottle()
   @Public()
   requestRestoreCode(@Body() { email }: EmailAuthDto) {
     return this.authService.requestRestoreCode(email);
   }
 
   @Post('restore')
+  @VerifyCodeThrottle()
   @Public()
   restoreAccount(@Body() { email, code }: RestoreAccountDto) {
     return this.authService.restoreAccount(email, code);
   }
 
   @Post('change-password')
+  @VerifyCodeThrottle()
   @Public()
   changePassword(@Body() data: ChangePasswordAuthDto) {
     return this.authService.changePassword(data);
