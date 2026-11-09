@@ -13,6 +13,11 @@ import {
   ProductVariant,
   ProductVariantSchema,
 } from '../product-variants/schemas/product-variant.schema.js';
+import { Order, OrderSchema } from '../orders/schemas/order.schema.js';
+import {
+  Wishlist,
+  WishlistSchema,
+} from '../wishlist/schemas/wishlist.schema.js';
 
 @Module({
   imports: [
@@ -22,6 +27,9 @@ import {
       { name: Product.name, schema: ProductSchema },
       { name: Category.name, schema: CategorySchema },
       { name: ProductVariant.name, schema: ProductVariantSchema },
+      // Dùng khi xoá sản phẩm: kiểm tra đơn hàng và dọn wishlist
+      { name: Order.name, schema: OrderSchema },
+      { name: Wishlist.name, schema: WishlistSchema },
     ]),
   ],
   controllers: [ProductController],

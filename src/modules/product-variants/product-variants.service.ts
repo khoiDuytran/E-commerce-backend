@@ -21,6 +21,7 @@ import {
   validateObjectIdHelper,
 } from '../../helpers/utils.js';
 import { CloudinaryService } from '../cloudinary/cloudinary.service.js';
+import { Order, OrderDocument } from '../orders/schemas/order.schema.js';
 import {
   Product,
   ProductDocument,
@@ -41,6 +42,8 @@ export class ProductVariantsService {
     @InjectModel(Product.name)
     private readonly productModel: Model<ProductDocument>,
     private readonly cloudinaryService: CloudinaryService,
+    @InjectModel(Order.name)
+    private readonly orderModel: Model<OrderDocument>,
   ) {}
 
   private syncProductStock(productId: Types.ObjectId) {
@@ -208,8 +211,20 @@ export class ProductVariantsService {
     );
   }
 
+  /**
+   * Biến thể đã có đơn hàng phải ẩn (isActive=false) thay vì xoá: hủy đơn và nhận
+   * hàng hoàn cộng lại kho vào biến thể, xoá đi thì số hàng đó mất mà không báo lỗi.
+   */
   async remove(id: string) {
     validateObjectIdHelper(id);
+    const orderCount = await this.orderModel.countDocuments({
+      'items.variant': id,
+    });
+    if (orderCount > 0) {
+      throw new ConflictException(
+        `Biến thể đã có trong ${orderCount} đơn hàng nên không thể xoá. Hãy ẩn biến thể để ngừng bán mà vẫn giữ lịch sử đơn hàng.`,
+      );
+    }
     const deleted = await this.productVariantModel.findByIdAndDelete(id);
     if (!deleted) {
       throw new NotFoundException('Không tìm thấy biến thể sản phẩm');

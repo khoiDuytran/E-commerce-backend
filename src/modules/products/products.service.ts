@@ -23,6 +23,11 @@ import {
   CategoryDocument,
 } from '../categories/schemas/category.schema.js';
 import { CloudinaryService } from '../cloudinary/cloudinary.service.js';
+import { Order, OrderDocument } from '../orders/schemas/order.schema.js';
+import {
+  Wishlist,
+  WishlistDocument,
+} from '../wishlist/schemas/wishlist.schema.js';
 import {
   assertOriginalPrice,
   isDuplicateKeyErrorHelper,
@@ -46,6 +51,10 @@ export class ProductService {
     @InjectModel(ProductVariant.name)
     private readonly variantModel: Model<ProductVariantDocument>,
     private readonly cloudinaryService: CloudinaryService,
+    @InjectModel(Order.name)
+    private readonly orderModel: Model<OrderDocument>,
+    @InjectModel(Wishlist.name)
+    private readonly wishlistModel: Model<WishlistDocument>,
   ) {}
 
   // Số biến thể của từng sản phẩm, để admin biết tồn kho nào đang tính từ biến thể
@@ -229,15 +238,44 @@ export class ProductService {
     }
   }
 
+  /**
+   * Chỉ xoá cứng sản phẩm chưa từng được đặt. Sản phẩm đã có đơn phải ẩn (isActive=false):
+   * hủy đơn và nhận hàng hoàn cần cộng lại kho vào sản phẩm/biến thể, còn top bán chạy
+   * đọc soldCount của sản phẩm, nên xoá đi sẽ làm mất kho và thống kê mà không báo lỗi.
+   */
   async remove(id: string) {
     validateObjectIdHelper(id);
+
+    const orderCount = await this.orderModel.countDocuments({
+      'items.product': id,
+    });
+    if (orderCount > 0) {
+      throw new ConflictException(
+        `Sản phẩm đã có trong ${orderCount} đơn hàng nên không thể xoá. Hãy ẩn sản phẩm để ngừng bán mà vẫn giữ lịch sử đơn hàng.`,
+      );
+    }
 
     const deleted = await this.productModel.findByIdAndDelete(id);
     if (!deleted) {
       throw new NotFoundException('Không tìm thấy sản phẩm');
     }
 
-    await this.cloudinaryService.deleteUnusedImages(deleted.images);
+    // Xoá kèm biến thể để không còn biến thể mồ côi giữ SKU (SKU là unique)
+    const variants = await this.variantModel
+      .find({ product: id })
+      .select('images')
+      .lean();
+    await this.variantModel.deleteMany({ product: id });
+    await this.wishlistModel.updateMany(
+      { products: id },
+      { $pull: { products: id } },
+    );
+
+    // Dọn sau cùng: ảnh còn được nơi khác tham chiếu sẽ được giữ lại
+    await this.cloudinaryService.deleteUnusedImages([
+      ...deleted.images,
+      ...variants.flatMap((variant) => variant.images ?? []),
+    ]);
 
     return { message: 'Xoá sản phẩm thành công' };
   }
