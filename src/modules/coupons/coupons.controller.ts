@@ -12,6 +12,7 @@ import {
 import { CouponService } from './coupons.service.js';
 import { CreateCouponDto } from './dto/create-coupon.dto.js';
 import { UpdateCouponDto } from './dto/update-coupon.dto.js';
+import { LookupCouponDto } from './dto/lookup-coupon.dto.js';
 import { Roles } from '../../decorator/customize.js';
 import { UserRole } from '../../common/enums/user-role.enum.js';
 import { RolesGuard } from '../../auth/passport/roles.guard.js';
@@ -28,6 +29,8 @@ export class CouponController {
   }
 
   @Get()
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   findAll(
     @Query() query: string,
     @Query('current') current: string,
@@ -43,7 +46,15 @@ export class CouponController {
     return this.couponService.getStats();
   }
 
+  // Khách tra một mã khi thanh toán; chỉ trả mã còn dùng được và các field để tính tiền giảm
+  @Get('lookup')
+  lookup(@Query() { code }: LookupCouponDto) {
+    return this.couponService.lookup(code);
+  }
+
   @Get(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   findOne(@Param('id') id: string) {
     return this.couponService.findOne(id);
   }

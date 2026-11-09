@@ -32,7 +32,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
     private readonly refreshTokenService: RefreshTokensService,
-  ) {}
+  ) { }
 
   private refreshCookieOptions(): CookieOptions {
     const secure = this.configService.get<string>('NODE_ENV') === 'production';
@@ -52,7 +52,7 @@ export class AuthController {
   @Post('login')
   @UseGuards(LocalAuthGuard)
   @Public()
-  @ResponseMessage('Fetch login')
+  @ResponseMessage('Login success')
   async login(
     @Request() req: ExpressRequest & { user: any },
     @Response({ passthrough: true }) res: ExpressResponse,

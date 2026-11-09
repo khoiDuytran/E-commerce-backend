@@ -13,6 +13,7 @@ import { UpdateCouponDto } from './dto/update-coupon.dto.js';
 import { Coupon, CouponDocument } from './schemas/coupon.schema.js';
 import {
   isDuplicateKeyErrorHelper,
+  stripUnsafeOperators,
   validateObjectIdHelper,
 } from '../../helpers/utils.js';
 
@@ -42,6 +43,7 @@ export class CouponService {
     const { filter, sort } = aqp(query);
     delete filter.current;
     delete filter.pageSize;
+    stripUnsafeOperators(filter);
 
     if (!current) current = 1;
     if (!pageSize) pageSize = 10;
@@ -58,6 +60,32 @@ export class CouponService {
     return {
       meta: { current, pageSize, pages: totalPages, total: totalItems },
       results,
+    };
+  }
+
+  async lookup(rawCode: string) {
+    const now = new Date();
+    // Cùng điều kiện với lúc tạo đơn trong orders.service
+    const coupon = await this.couponModel.findOne({
+      code: rawCode.trim().toUpperCase(),
+      isActive: true,
+      startDate: { $lte: now },
+      endDate: { $gte: now },
+      $expr: { $lt: ['$usedCount', '$usageLimit'] },
+    });
+    if (!coupon) {
+      throw new NotFoundException(
+        'Mã giảm giá không hợp lệ hoặc đã hết lượt sử dụng',
+      );
+    }
+
+    return {
+      _id: coupon._id,
+      code: coupon.code,
+      discountType: coupon.discountType,
+      discountValue: coupon.discountValue,
+      minOrderValue: coupon.minOrderValue,
+      maxDiscount: coupon.maxDiscount,
     };
   }
 
