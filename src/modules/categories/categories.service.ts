@@ -12,6 +12,10 @@ import { UpdateCategoryDto } from './dto/update-category.dto.js';
 import { Category, CategoryDocument } from './schemas/category.schema.js';
 import { CloudinaryService } from '../cloudinary/cloudinary.service.js';
 import {
+  Product,
+  ProductDocument,
+} from '../products/schemas/product.schema.js';
+import {
   isDuplicateKeyErrorHelper,
   MAX_PAGE_SIZE,
   stripUnsafeOperators,
@@ -23,6 +27,8 @@ export class CategoryService {
   constructor(
     @InjectModel(Category.name)
     private readonly categoryModel: Model<CategoryDocument>,
+    @InjectModel(Product.name)
+    private readonly productModel: Model<ProductDocument>,
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
@@ -138,6 +144,16 @@ export class CategoryService {
     if (hasChildren) {
       throw new BadRequestException(
         'Không thể xoá danh mục đang có danh mục con. Vui lòng xoá hoặc chuyển danh mục con trước.',
+      );
+    }
+
+    // Tính cả sản phẩm đã ẩn: chúng vẫn trỏ tới danh mục và có thể được bật lại
+    const productCount = await this.productModel.countDocuments({
+      category: _id,
+    });
+    if (productCount > 0) {
+      throw new BadRequestException(
+        `Không thể xoá danh mục đang có ${productCount} sản phẩm (kể cả sản phẩm đã ẩn). Vui lòng chuyển các sản phẩm sang danh mục khác trước.`,
       );
     }
 

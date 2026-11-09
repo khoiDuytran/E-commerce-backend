@@ -12,7 +12,10 @@ import { OrderStatus } from '../../common/enums/order-status.enum.js';
 import { PaymentStatus } from '../../common/enums/payment-status.enum.js';
 import { PaymentTransactionStatus } from '../../common/enums/payment-transaction-status.enum.js';
 import { RefundStatus } from '../../common/enums/refund-status.enum.js';
-import { validateObjectIdHelper } from '../../helpers/utils.js';
+import {
+  stripUnsafeOperators,
+  validateObjectIdHelper,
+} from '../../helpers/utils.js';
 import { restockItem } from '../../helpers/product-stock.js';
 import { Order, OrderDocument } from '../orders/schemas/order.schema.js';
 import {
@@ -73,8 +76,10 @@ export class RefundsService {
     query: Record<string, any>,
     current?: number,
     pageSize?: number,
+    populateUser = false,
   ) {
     const { filter, sort } = aqp(query);
+    stripUnsafeOperators(filter);
     delete filter.current;
     delete filter.pageSize;
 
@@ -92,14 +97,16 @@ export class RefundsService {
     const sortOption =
       sort && Object.keys(sort).length > 0 ? sort : { createdAt: -1 };
 
+    const query$ = this.refundModel
+      .find(filter)
+      .sort(sortOption as any)
+      .skip((page - 1) * size)
+      .limit(size)
+      .populate('orderId');
+    if (populateUser) query$.populate('userId', 'name email');
     const [totalItems, results] = await Promise.all([
       this.refundModel.countDocuments(filter),
-      this.refundModel
-        .find(filter)
-        .sort(sortOption as any)
-        .skip((page - 1) * size)
-        .limit(size)
-        .populate('orderId'),
+      query$,
     ]);
 
     return {
@@ -159,12 +166,37 @@ export class RefundsService {
     return this.paginate({ userId }, query, current, pageSize);
   }
 
+  /**
+   * Kèm phương thức thanh toán để admin biết bước hoàn tiền sẽ gọi VNPay
+   * hay phải tự hoàn tay (COD), và thông tin khách đã gửi yêu cầu.
+   */
   async findAllForAdmin(
     query: Record<string, any>,
     current?: number,
     pageSize?: number,
   ) {
-    return this.paginate({}, query, current, pageSize);
+    const page = await this.paginate({}, query, current, pageSize, true);
+    const orderIds = page.results.map((refund) => refund.orderId?._id ?? refund.orderId);
+    const payments = await this.paymentModel
+      .find({ orderId: { $in: orderIds } })
+      .select('orderId paymentMethod status')
+      .lean();
+    const paymentByOrder = new Map(
+      payments.map((payment) => [String(payment.orderId), payment]),
+    );
+    return {
+      ...page,
+      results: page.results.map((refund) => {
+        const payment = paymentByOrder.get(
+          String(refund.orderId?._id ?? refund.orderId),
+        );
+        return {
+          ...refund.toObject(),
+          paymentMethod: payment?.paymentMethod ?? null,
+          paymentStatus: payment?.status ?? null,
+        };
+      }),
+    };
   }
 
   async findOne(id: string, userId?: string, isAdmin = false) {
