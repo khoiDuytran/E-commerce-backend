@@ -179,11 +179,11 @@ export class UsersService {
     return { _id: user._id };
   }
 
+  // Quên mật khẩu chỉ gửi mã tới email đã đăng ký tài khoản
   async retryPassword(email: string) {
-    //check mail
-    const user = await this.userModel.findOne({ email });
+    const user = await this.userModel.findOne({ email: email.trim() });
     if (!user) {
-      throw new NotFoundException('Tài khoản không tồn tại');
+      throw new NotFoundException('Email chưa được đăng ký tài khoản');
     }
 
     await this.sendAccountCode(
@@ -195,6 +195,20 @@ export class UsersService {
     return { _id: user._id, email: user.email };
   }
 
+  private async findResetPasswordUser(email: string, code: string) {
+    const user = await this.userModel.findOne({ email: email.trim() });
+    if (!user || !this.isValidCode(user, code)) {
+      throw new BadRequestException('Mã code không hợp lệ hoặc đã hết hạn');
+    }
+    return user;
+  }
+
+  // Bước 2 quên mật khẩu: chỉ kiểm tra mã, chưa xóa mã để bước đổi mật khẩu dùng tiếp
+  async checkResetPasswordCode(email: string, code: string) {
+    await this.findResetPasswordUser(email, code);
+    return { isValid: true };
+  }
+
   async changePassword(data: ChangePasswordAuthDto) {
     if (data.confirmPassword !== data.password) {
       throw new BadRequestException(
@@ -202,47 +216,33 @@ export class UsersService {
       );
     }
 
-    //check email
-    const user = await this.userModel.findOne({
-      email: data.email,
-      codeId: data.code,
+    // Kiểm tra lại mã vì client có thể gọi thẳng API mà không qua bước nhập mã
+    const user = await this.findResetPasswordUser(data.email, data.code);
+
+    const newPassword = await hashPasswordHelper(data.password);
+    // Xóa mã sau khi dùng để không dùng lại được
+    await user.updateOne({
+      password: newPassword,
+      codeId: null,
+      codeExpired: null,
     });
 
-    if (!user) {
-      throw new BadRequestException('Mã code không hợp lệ hoặc đã hết hạn');
-    }
-
-    //check expire code
-    const isBeforeCheck = dayjs().isBefore(user.codeExpired);
-
-    if (isBeforeCheck) {
-      //valid => update password
-      const newPassword = await hashPasswordHelper(data.password);
-      await user.updateOne({
-        password: newPassword,
-        codeId: null,
-        codeExpired: null,
+    // Mật khẩu đã đổi xong: lỗi gửi mail thông báo không làm hỏng việc đổi mật khẩu
+    try {
+      await this.mailerService.sendMail({
+        to: user.email,
+        subject: 'Mật khẩu tài khoản E-commerce đã được thay đổi',
+        template: 'password-changed',
+        context: {
+          name: user.name ?? user.email,
+          changedAt: dayjs().format('HH:mm DD/MM/YYYY'),
+        },
       });
-
-      // Mật khẩu đã đổi xong: lỗi gửi mail thông báo không làm hỏng việc đổi mật khẩu
-      try {
-        await this.mailerService.sendMail({
-          to: user.email,
-          subject: 'Mật khẩu tài khoản E-commerce đã được thay đổi',
-          template: 'password-changed',
-          context: {
-            name: user.name ?? user.email,
-            changedAt: dayjs().format('HH:mm DD/MM/YYYY'),
-          },
-        });
-      } catch (error) {
-        console.error(`Gửi mail thất bại tới ${user.email}:`, error);
-      }
-
-      return { isBeforeCheck, userId: user._id.toString() };
-    } else {
-      throw new BadRequestException('Mã code không hợp lệ hoặc đã hết hạn');
+    } catch (error) {
+      console.error(`Gửi mail thất bại tới ${user.email}:`, error);
     }
+
+    return { isBeforeCheck: true, userId: user._id.toString() };
   }
 
   async findAll(query: string, current: number, pageSize: number) {

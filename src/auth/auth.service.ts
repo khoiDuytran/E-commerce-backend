@@ -60,6 +60,10 @@ export class AuthService {
     return await this.usersService.retryPassword(data);
   }
 
+  async checkResetPasswordCode(email: string, code: string) {
+    return await this.usersService.checkResetPasswordCode(email, code);
+  }
+
   async requestRestoreCode(email: string) {
     return await this.usersService.requestRestoreCode(email);
   }
