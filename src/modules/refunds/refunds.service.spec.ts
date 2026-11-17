@@ -154,23 +154,29 @@ describe('RefundsService', () => {
     expect(notificationsService.notifyOrderStatus).not.toHaveBeenCalled();
   });
 
+  const vnpayPayment = (overrides = {}) => ({
+    orderCode: 'ORD-1',
+    amount: 100000,
+    paymentMethod: PaymentMethod.VNPAY,
+    status: PaymentTransactionStatus.SUCCESS,
+    transactionId: 'TXN-1',
+    vnpCreateDate: '20260101115500',
+    gatewayResponse: { vnp_PayDate: '20260101120000' },
+    ...overrides,
+  });
+
   it('calls VNPay before marking a VNPay order as refunded', async () => {
     mockRefund(RefundStatus.RECEIVED);
-    paymentModel.findOne.mockResolvedValue({
-      orderCode: 'ORD-1',
-      paymentMethod: PaymentMethod.VNPAY,
-      status: PaymentTransactionStatus.SUCCESS,
-      transactionId: 'TXN-1',
-      gatewayResponse: { vnp_PayDate: '20260101120000' },
-    });
+    paymentModel.findOne.mockResolvedValue(vnpayPayment());
 
     await service.update(REFUND_ID, { status: RefundStatus.REFUNDED });
 
+    // vnp_TransactionDate là vnp_CreateDate của request pay, không phải vnp_PayDate
     expect(vnpayService.refund).toHaveBeenCalledWith({
       orderCode: 'ORD-1',
       amount: 100000,
       transactionNo: 'TXN-1',
-      transactionDate: '20260101120000',
+      transactionDate: '20260101115500',
       createdBy: 'admin',
     });
     expect(orderModel.findByIdAndUpdate).toHaveBeenCalledWith('order-1', {
@@ -181,11 +187,7 @@ describe('RefundsService', () => {
 
   it('reverts the status when VNPay rejects the refund', async () => {
     mockRefund(RefundStatus.RECEIVED);
-    paymentModel.findOne.mockResolvedValue({
-      orderCode: 'ORD-1',
-      paymentMethod: PaymentMethod.VNPAY,
-      status: PaymentTransactionStatus.SUCCESS,
-    });
+    paymentModel.findOne.mockResolvedValue(vnpayPayment());
     vnpayService.refund.mockRejectedValue(new Error('rejected'));
 
     await expect(
@@ -199,6 +201,25 @@ describe('RefundsService', () => {
     expect(orderModel.findByIdAndUpdate).not.toHaveBeenCalled();
     expect(notificationsService.notifyOrderStatus).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['vnpCreateDate', { vnpCreateDate: undefined }],
+    ['transactionId', { transactionId: undefined }],
+  ])(
+    'rejects before changing status when the VNPay payment has no %s',
+    async (_field, overrides) => {
+      mockRefund(RefundStatus.RECEIVED);
+      paymentModel.findOne.mockResolvedValue(vnpayPayment(overrides));
+
+      await expect(
+        service.update(REFUND_ID, { status: RefundStatus.REFUNDED }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(refundModel.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(vnpayService.refund).not.toHaveBeenCalled();
+      expect(orderModel.findByIdAndUpdate).not.toHaveBeenCalled();
+    },
+  );
 
   it('does not call VNPay for a COD refund', async () => {
     mockRefund(RefundStatus.RECEIVED);

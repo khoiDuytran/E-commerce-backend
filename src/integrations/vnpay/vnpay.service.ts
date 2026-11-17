@@ -12,7 +12,7 @@ export interface VnpayRefundInput {
   orderCode: string;
   amount: number;
   transactionNo: string;
-  transactionDate: string; // vnp_PayDate của giao dịch gốc
+  transactionDate: string; // vnp_CreateDate của request pay gốc (không phải vnp_PayDate)
   createdBy: string;
 }
 
@@ -20,8 +20,21 @@ export interface VnpayRefundInput {
 export class VnpayService {
   constructor(private readonly configService: ConfigService) {}
 
-  getPaymentInfo(orderCode: string, amount: number): VnpayPaymentInfo {
-    const params = this.buildPaymentParams(orderCode, amount);
+  /** Giá trị vnp_CreateDate cho một lượt thanh toán mới, cần lưu lại để hoàn tiền */
+  newCreateDate(): string {
+    return this.formatDate(new Date());
+  }
+
+  /**
+   * createDate phải là giá trị đã lưu của lượt thanh toán, để mọi link cấp
+   * cho cùng một lượt đều có cùng vnp_CreateDate mà API hoàn tiền yêu cầu.
+   */
+  getPaymentInfo(
+    orderCode: string,
+    amount: number,
+    createDate: string,
+  ): VnpayPaymentInfo {
+    const params = this.buildPaymentParams(orderCode, amount, createDate);
     const query = this.buildQuery(params); // đã encode, sort
     const secureHash = this.sign(query); // ký đúng chuỗi này
     return {
@@ -51,6 +64,14 @@ export class VnpayService {
 
   /** Hoàn toàn bộ giao dịch qua merchant API. Throw nếu VNPay không chấp nhận. */
   async refund(input: VnpayRefundInput): Promise<Record<string, unknown>> {
+    if (!input.transactionNo) {
+      throw new Error('Thiếu mã giao dịch VNPay (vnp_TransactionNo)');
+    }
+    if (!/^\d{14}$/.test(input.transactionDate)) {
+      throw new Error(
+        `vnp_TransactionDate không hợp lệ: "${input.transactionDate}"`,
+      );
+    }
     const now = this.formatDate(new Date());
     const params = {
       vnp_RequestId: randomBytes(16).toString('hex'),
@@ -99,7 +120,16 @@ export class VnpayService {
         signal: AbortSignal.timeout(15000),
       },
     );
-    const result = (await response.json()) as Record<string, unknown>;
+    // VNPay có thể trả HTML khi lỗi hệ thống hoặc sai URL: giữ lại nội dung để biết lỗi gốc
+    const text = await response.text();
+    let result: Record<string, unknown>;
+    try {
+      result = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      throw new Error(
+        `VNPay trả phản hồi không hợp lệ (HTTP ${response.status}): ${text.slice(0, 200)}`,
+      );
+    }
     if (result.vnp_ResponseCode !== '00') {
       throw new Error(
         `VNPay từ chối hoàn tiền: ${String(result.vnp_ResponseCode)} ${String(result.vnp_Message ?? '')}`,
@@ -108,14 +138,17 @@ export class VnpayService {
     return result;
   }
 
-  private buildPaymentParams(orderCode: string, amount: number) {
-    const now = this.formatDate(new Date());
+  private buildPaymentParams(
+    orderCode: string,
+    amount: number,
+    createDate: string,
+  ) {
     return {
       vnp_Version: '2.1.0',
       vnp_Command: 'pay',
       vnp_TmnCode: this.requiredConfig('VNPAY_TMN_CODE'),
       vnp_Amount: String(Math.round(amount * 100)),
-      vnp_CreateDate: now,
+      vnp_CreateDate: createDate,
       vnp_CurrCode: 'VND',
       vnp_IpAddr: this.configService.get<string>('VNPAY_IP_ADDR', '127.0.0.1'),
       vnp_Locale: 'vn',

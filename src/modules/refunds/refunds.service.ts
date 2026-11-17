@@ -225,6 +225,21 @@ export class RefundsService {
       );
     }
 
+    // Kiểm tra đủ dữ liệu hoàn tiền VNPay trước khi chuyển trạng thái,
+    // để không gửi request chắc chắn bị VNPay từ chối
+    const payment =
+      dto.status === RefundStatus.REFUNDED
+        ? await this.paymentModel.findOne(paymentOrderFilter(refund.orderId))
+        : null;
+    const isVnpayRefund =
+      payment?.paymentMethod === PaymentMethod.VNPAY &&
+      payment.status === PaymentTransactionStatus.SUCCESS;
+    if (isVnpayRefund && (!payment.transactionId || !payment.vnpCreateDate)) {
+      throw new BadRequestException(
+        'Giao dịch VNPay thiếu mã giao dịch hoặc thời gian tạo giao dịch nên không thể hoàn tiền tự động. Vui lòng hoàn tiền thủ công trên cổng VNPay',
+      );
+    }
+
     // Chuyển trạng thái nguyên tử: 2 request cùng lúc thì chỉ 1 request thắng,
     // tránh cộng kho hoặc hoàn tiền 2 lần.
     const previousStatus = refund.status;
@@ -244,19 +259,14 @@ export class RefundsService {
     }
 
     if (dto.status === RefundStatus.REFUNDED) {
-      const payment = await this.paymentModel.findOne(
-        paymentOrderFilter(refund.orderId),
-      );
-      if (
-        payment?.paymentMethod === PaymentMethod.VNPAY &&
-        payment.status === PaymentTransactionStatus.SUCCESS
-      ) {
+      if (isVnpayRefund) {
         try {
           claimed.gatewayResponse = await this.vnpayService.refund({
             orderCode: payment.orderCode,
-            amount: claimed.refundAmount,
-            transactionNo: payment.transactionId ?? '',
-            transactionDate: payment.gatewayResponse?.vnp_PayDate ?? '',
+            // Hoàn toàn phần (vnp_TransactionType 02): VNPay đối chiếu với số tiền đã thanh toán
+            amount: payment.amount,
+            transactionNo: payment.transactionId!,
+            transactionDate: payment.vnpCreateDate!,
             createdBy: 'admin',
           });
           await claimed.save();

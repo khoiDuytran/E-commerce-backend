@@ -35,7 +35,7 @@ export class UsersService {
     private userModel: Model<User>,
     private readonly mailerService: MailerService,
     private readonly refreshTokensService: RefreshTokensService,
-  ) {}
+  ) { }
 
   async isEmailExist(email: string): Promise<boolean> {
     return !!(await this.userModel.exists({ email }));
@@ -183,7 +183,7 @@ export class UsersService {
   async retryPassword(email: string) {
     const user = await this.userModel.findOne({ email: email.trim() });
     if (!user) {
-      throw new NotFoundException('Email chưa được đăng ký tài khoản');
+      throw new NotFoundException('Email không hợp lệ');
     }
 
     await this.sendAccountCode(

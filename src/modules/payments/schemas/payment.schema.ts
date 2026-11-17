@@ -36,6 +36,11 @@ export class Payment {
   @Prop()
   transactionId?: string; // mã giao dịch từ cổng thanh toán
 
+  // vnp_CreateDate (yyyyMMddHHmmss, GMT+7) của lượt thanh toán hiện tại.
+  // API hoàn tiền của VNPay bắt buộc gửi lại đúng giá trị này.
+  @Prop()
+  vnpCreateDate?: string;
+
   @Prop()
   paidAt?: Date;
 

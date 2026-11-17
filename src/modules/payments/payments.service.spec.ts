@@ -51,6 +51,7 @@ describe('PaymentsService', () => {
     vnpayService = {
       verifyResponse: vi.fn().mockReturnValue(true),
       getPaymentInfo: vi.fn().mockReturnValue({ checkoutUrl: 'https://pay' }),
+      newCreateDate: vi.fn().mockReturnValue('20260101120000'),
     };
     service = new PaymentsService(
       paymentModel,
@@ -58,6 +59,53 @@ describe('PaymentsService', () => {
       vnpayService,
       notificationsService,
     );
+  });
+
+  describe('create', () => {
+    const ORDER_ID = '507f1f77bcf86cd799439013';
+    const makeOrder = (overrides = {}) => ({
+      _id: ORDER_ID,
+      orderCode: 'ORD-1',
+      total: 84999,
+      status: OrderStatus.PENDING,
+      paymentStatus: PaymentStatus.UNPAID,
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      orderModel.findOne = vi.fn();
+      orderModel.updateOne = vi.fn().mockResolvedValue({});
+      paymentModel.findOneAndUpdate = vi
+        .fn()
+        .mockResolvedValue(makePayment({ paymentMethod: PaymentMethod.COD }));
+    });
+
+    it('fills the payment method on a legacy order without one', async () => {
+      orderModel.findOne.mockResolvedValue(makeOrder());
+
+      await service.create(USER_ID, {
+        orderId: ORDER_ID,
+        paymentMethod: PaymentMethod.COD,
+      } as any);
+
+      expect(orderModel.updateOne).toHaveBeenCalledWith(
+        { _id: ORDER_ID, paymentMethod: { $exists: false } },
+        { $set: { paymentMethod: PaymentMethod.COD } },
+      );
+    });
+
+    it('leaves the order alone when it already has a payment method', async () => {
+      orderModel.findOne.mockResolvedValue(
+        makeOrder({ paymentMethod: PaymentMethod.COD }),
+      );
+
+      await service.create(USER_ID, {
+        orderId: ORDER_ID,
+        paymentMethod: PaymentMethod.VNPAY,
+      } as any);
+
+      expect(orderModel.updateOne).not.toHaveBeenCalled();
+    });
   });
 
   describe('VNPay IPN', () => {
@@ -205,7 +253,48 @@ describe('PaymentsService', () => {
 
       expect(payment.status).toBe(PaymentTransactionStatus.PENDING);
       expect(result.paymentInfo.checkoutUrl).toBe('https://pay');
+      // Lượt mới có vnp_CreateDate mới, link dùng đúng giá trị đã lưu
+      expect((payment as any).vnpCreateDate).toBe('20260101120000');
+      expect(vnpayService.getPaymentInfo).toHaveBeenCalledWith(
+        'ORD-1',
+        84999,
+        '20260101120000',
+      );
     });
+  });
+
+  it('reuses the stored vnp_CreateDate for every checkout link', async () => {
+    paymentModel.findById.mockResolvedValue(
+      makePayment({ vnpCreateDate: '20251231235959' }),
+    );
+    await service.findOne(PAYMENT_ID, USER_ID);
+    expect(vnpayService.newCreateDate).not.toHaveBeenCalled();
+    expect(vnpayService.getPaymentInfo).toHaveBeenCalledWith(
+      'ORD-1',
+      84999,
+      '20251231235959',
+    );
+  });
+
+  it('stores a vnp_CreateDate once for a legacy pending payment', async () => {
+    paymentModel.findById
+      .mockResolvedValueOnce(makePayment())
+      .mockResolvedValueOnce({ vnpCreateDate: '20251231000000' });
+    // Request khác đã gán trước nên điều kiện $exists không khớp
+    paymentModel.findOneAndUpdate = vi.fn().mockResolvedValue(null);
+
+    await service.findOne(PAYMENT_ID, USER_ID);
+
+    expect(paymentModel.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: PAYMENT_ID, vnpCreateDate: { $exists: false } },
+      { $set: { vnpCreateDate: '20260101120000' } },
+      { returnDocument: 'after' },
+    );
+    expect(vnpayService.getPaymentInfo).toHaveBeenCalledWith(
+      'ORD-1',
+      84999,
+      '20251231000000',
+    );
   });
 
   it('does not expose a checkout link once the payment is no longer pending', async () => {

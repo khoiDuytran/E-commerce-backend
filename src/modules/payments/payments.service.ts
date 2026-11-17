@@ -48,18 +48,34 @@ export class PaymentsService {
     }
   }
 
-  private paymentView(payment: PaymentDocument) {
+  private async paymentView(payment: PaymentDocument) {
     // Chỉ cấp link thanh toán khi giao dịch còn đang chờ
-    return payment.paymentMethod === PaymentMethod.VNPAY &&
-      payment.status === PaymentTransactionStatus.PENDING
-      ? {
-          payment,
-          paymentInfo: this.vnpayService.getPaymentInfo(
-            payment.orderCode,
-            payment.amount,
-          ),
-        }
-      : { payment };
+    if (
+      payment.paymentMethod !== PaymentMethod.VNPAY ||
+      payment.status !== PaymentTransactionStatus.PENDING
+    ) {
+      return { payment };
+    }
+    // Payment tạo trước khi có field này: gán một lần, điều kiện $exists để
+    // các request đồng thời cùng dùng một giá trị
+    if (!payment.vnpCreateDate) {
+      const updated = await this.paymentModel.findOneAndUpdate(
+        { _id: payment._id, vnpCreateDate: { $exists: false } },
+        { $set: { vnpCreateDate: this.vnpayService.newCreateDate() } },
+        { returnDocument: 'after' },
+      );
+      payment.vnpCreateDate =
+        updated?.vnpCreateDate ??
+        (await this.paymentModel.findById(payment._id))?.vnpCreateDate;
+    }
+    return {
+      payment,
+      paymentInfo: this.vnpayService.getPaymentInfo(
+        payment.orderCode,
+        payment.amount,
+        payment.vnpCreateDate!,
+      ),
+    };
   }
 
   private async ownedPaymentOrThrow(id: string, userId: string) {
@@ -92,10 +108,22 @@ export class PaymentsService {
             createPaymentDto.paymentMethod === PaymentMethod.VNPAY
               ? new Date(Date.now() + 30 * 60 * 1000)
               : undefined,
+          vnpCreateDate:
+            createPaymentDto.paymentMethod === PaymentMethod.VNPAY
+              ? this.vnpayService.newCreateDate()
+              : undefined,
         },
       },
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
     );
+    // Đơn cũ chưa có paymentMethod: lấy theo payment vừa tìm hoặc vừa tạo.
+    // Điều kiện $exists để không ghi đè phương thức đã lưu trên đơn
+    if (!order.paymentMethod) {
+      await this.orderModel.updateOne(
+        { _id: order._id, paymentMethod: { $exists: false } },
+        { $set: { paymentMethod: payment.paymentMethod } },
+      );
+    }
     return this.paymentView(payment);
   }
 
@@ -115,6 +143,10 @@ export class PaymentsService {
       expiresAt:
         paymentMethod === PaymentMethod.VNPAY
           ? new Date(Date.now() + 30 * 60 * 1000)
+          : undefined,
+      vnpCreateDate:
+        paymentMethod === PaymentMethod.VNPAY
+          ? this.vnpayService.newCreateDate()
           : undefined,
     });
     return this.paymentView(payment);
@@ -149,6 +181,11 @@ export class PaymentsService {
     payment.expiresAt =
       payment.paymentMethod === PaymentMethod.VNPAY
         ? new Date(Date.now() + 30 * 60 * 1000)
+        : undefined;
+    // Lượt thanh toán mới thì vnp_CreateDate mới
+    payment.vnpCreateDate =
+      payment.paymentMethod === PaymentMethod.VNPAY
+        ? this.vnpayService.newCreateDate()
         : undefined;
     await payment.save();
     return this.paymentView(payment);

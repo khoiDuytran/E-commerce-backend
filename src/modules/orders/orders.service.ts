@@ -511,6 +511,7 @@ export class OrdersService {
         total,
         status: OrderStatus.PENDING,
         paymentStatus: PaymentStatus.UNPAID,
+        paymentMethod,
         note,
       });
       createdOrderId = order._id.toString();

@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types, Schema as MongooseSchema } from 'mongoose';
 import { OrderStatus } from '../../../common/enums/order-status.enum.js';
 import { PaymentStatus } from '../../../common/enums/payment-status.enum.js';
+import { PaymentMethod } from '../../../common/enums/payment-method.enum.js';
 
 export type OrderDocument = HydratedDocument<Order>;
 
@@ -106,6 +107,11 @@ export class Order {
     default: PaymentStatus.UNPAID,
   })
   paymentStatus: PaymentStatus;
+
+  // Sao chép từ Payment lúc tạo đơn để danh sách đơn hiển thị và lọc được.
+  // Không bắt buộc vì đơn cũ chỉ có sau khi chạy scripts/backfill-order-payment-method.mjs
+  @Prop({ type: String, enum: Object.values(PaymentMethod) })
+  paymentMethod?: PaymentMethod;
 
   @Prop({ trim: true })
   note?: string;

@@ -124,6 +124,21 @@ describe('OrdersService', () => {
       );
     });
 
+    it('stores the payment method on the order', async () => {
+      const { order } = await service.create(
+        USER_ID,
+        createDto({ paymentMethod: PaymentMethod.COD }),
+      );
+      expect(order.paymentMethod).toBe(PaymentMethod.COD);
+      expect(paymentsService.createForOrder).toHaveBeenCalledWith(
+        USER_ID,
+        ORDER_ID,
+        order.orderCode,
+        order.total,
+        PaymentMethod.COD,
+      );
+    });
+
     it('notifies admins about the new order', async () => {
       const { order } = await service.create(USER_ID, createDto());
       expect(notificationsService.notifyAdminsNewOrder).toHaveBeenCalledWith(
