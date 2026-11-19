@@ -151,7 +151,13 @@ describe('PaymentsService', () => {
       expect(orderModel.findOneAndUpdate).toHaveBeenCalledWith(
         {
           _id: 'order-1',
-          status: { $nin: [OrderStatus.CANCELLED, OrderStatus.REFUNDED] },
+          status: {
+            $nin: [
+              OrderStatus.CANCELLED,
+              OrderStatus.DELIVERY_FAILED,
+              OrderStatus.REFUNDED,
+            ],
+          },
         },
         { paymentStatus: PaymentStatus.PAID },
         { returnDocument: 'before' },
@@ -185,6 +191,21 @@ describe('PaymentsService', () => {
       const result = await service.handleVnpayIpn(successQuery);
 
       expect(result.RspCode).toBe('00');
+      // Đơn giao thất bại cũng là đơn đã đóng: tiền về muộn không mở lại đơn
+      expect(orderModel.findOneAndUpdate).toHaveBeenCalledWith(
+        {
+          _id: payment.orderId,
+          status: {
+            $nin: [
+              OrderStatus.CANCELLED,
+              OrderStatus.DELIVERY_FAILED,
+              OrderStatus.REFUNDED,
+            ],
+          },
+        },
+        { paymentStatus: PaymentStatus.PAID },
+        { returnDocument: 'before' },
+      );
       expect(payment.status).toBe(PaymentTransactionStatus.SUCCESS);
       expect(payment.requiresManualRefund).toBe(true);
       expect(notificationsService.notifyPaymentStatus).not.toHaveBeenCalled();

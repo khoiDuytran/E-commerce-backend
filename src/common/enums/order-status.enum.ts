@@ -4,6 +4,8 @@ export enum OrderStatus {
   SHIPPING = 'SHIPPING',
   DELIVERED = 'DELIVERED',
   CANCELLED = 'CANCELLED',
+  // Đang giao nhưng khách không nhận hàng; đơn kết thúc và hàng được trả lại kho
+  DELIVERY_FAILED = 'DELIVERY_FAILED',
   RETURN_REQUESTED = 'RETURN_REQUESTED',
   RETURN_APPROVED = 'RETURN_APPROVED',
   RETURN_RECEIVED = 'RETURN_RECEIVED',

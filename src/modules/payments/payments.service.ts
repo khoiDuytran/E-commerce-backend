@@ -23,6 +23,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 
 const CLOSED_ORDER_STATUSES: OrderStatus[] = [
   OrderStatus.CANCELLED,
+  OrderStatus.DELIVERY_FAILED,
   OrderStatus.REFUNDED,
 ];
 

@@ -105,6 +105,17 @@ export class OrdersController {
     return this.ordersService.cancel(req.user._id, req.user.role, id);
   }
 
+  // Giao thất bại (khách không nhận hàng): hoàn kho + coupon — chỉ admin
+  @Patch('delivery-failed/:id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
+  markDeliveryFailed(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.ordersService.markDeliveryFailed(req.user.role, id);
+  }
+
   // Xoá cứng đơn đã huỷ — chỉ admin
   @Delete(':id')
   @UseGuards(RolesGuard)

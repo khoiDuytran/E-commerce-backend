@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiscountType } from '../../common/enums/discount-type.enum.js';
 import { OrderStatus } from '../../common/enums/order-status.enum.js';
@@ -453,6 +453,113 @@ describe('OrdersService', () => {
       await expect(
         service.cancel(USER_ID, UserRole.USER, ORDER_ID),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('markDeliveryFailed', () => {
+    const shippingOrder = {
+      _id: ORDER_ID,
+      orderCode: 'ORD-1',
+      user: USER_ID,
+      status: OrderStatus.DELIVERY_FAILED,
+      paymentStatus: PaymentStatus.UNPAID,
+      total: 120000,
+      coupon: COUPON_ID,
+      items: [{ product: PRODUCT_ID, quantity: 2 }],
+    };
+
+    beforeEach(() => {
+      orderModel.exists = vi.fn();
+      paymentModel.findOneAndUpdate = vi.fn();
+      notificationsService.notifyAdminsDeliveryFailedRefund = vi
+        .fn()
+        .mockResolvedValue(undefined);
+    });
+
+    it('only moves an order that is still shipping', async () => {
+      orderModel.findOneAndUpdate.mockResolvedValue(shippingOrder);
+
+      await service.markDeliveryFailed(UserRole.ADMIN, ORDER_ID);
+
+      expect(orderModel.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: ORDER_ID, status: OrderStatus.SHIPPING },
+        { status: OrderStatus.DELIVERY_FAILED },
+        { returnDocument: 'after' },
+      );
+    });
+
+    it('restores stock and coupon, and expires an unpaid payment', async () => {
+      orderModel.findOneAndUpdate.mockResolvedValue(shippingOrder);
+
+      await service.markDeliveryFailed(UserRole.ADMIN, ORDER_ID);
+
+      expect(productModel.findByIdAndUpdate).toHaveBeenCalledWith(PRODUCT_ID, {
+        $inc: { stock: 2, soldCount: -2 },
+      });
+      expect(couponModel.findByIdAndUpdate).toHaveBeenCalledWith(COUPON_ID, {
+        $inc: { usedCount: -1 },
+      });
+      expect(paymentModel.updateOne).toHaveBeenCalledWith(
+        {
+          ...paymentOrderFilter(ORDER_ID),
+          status: {
+            $in: [
+              PaymentTransactionStatus.PENDING,
+              PaymentTransactionStatus.FAILED,
+            ],
+          },
+        },
+        { status: PaymentTransactionStatus.EXPIRED },
+      );
+      expect(
+        notificationsService.notifyAdminsDeliveryFailedRefund,
+      ).not.toHaveBeenCalled();
+      expect(notificationsService.notifyOrderStatus).toHaveBeenCalledWith(
+        expect.objectContaining({ status: OrderStatus.DELIVERY_FAILED }),
+      );
+    });
+
+    it('flags a paid order for manual refund instead of refunding', async () => {
+      orderModel.findOneAndUpdate.mockResolvedValue({
+        ...shippingOrder,
+        paymentStatus: PaymentStatus.PAID,
+      });
+      paymentModel.findOneAndUpdate.mockResolvedValue({
+        transactionId: 'TXN-1',
+      });
+
+      await service.markDeliveryFailed(UserRole.ADMIN, ORDER_ID);
+
+      expect(paymentModel.findOneAndUpdate).toHaveBeenCalledWith(
+        paymentOrderFilter(ORDER_ID),
+        { requiresManualRefund: true },
+        { returnDocument: 'after' },
+      );
+      expect(
+        notificationsService.notifyAdminsDeliveryFailedRefund,
+      ).toHaveBeenCalledWith('ORD-1', 120000, 'TXN-1');
+      expect(paymentModel.updateOne).not.toHaveBeenCalled();
+      expect(productModel.findByIdAndUpdate).toHaveBeenCalled();
+    });
+
+    it('does not restore stock twice when it loses a concurrent request', async () => {
+      orderModel.findOneAndUpdate.mockResolvedValue(null);
+      orderModel.exists.mockResolvedValue({ _id: ORDER_ID });
+
+      await expect(
+        service.markDeliveryFailed(UserRole.ADMIN, ORDER_ID),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(productModel.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(couponModel.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(notificationsService.notifyOrderStatus).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-admin callers', async () => {
+      await expect(
+        service.markDeliveryFailed(UserRole.USER, ORDER_ID),
+      ).rejects.toThrow(ForbiddenException);
+      expect(orderModel.findOneAndUpdate).not.toHaveBeenCalled();
     });
   });
 

@@ -123,7 +123,13 @@ export class DashboardService {
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     const validOrderMatch = {
-      status: { $nin: [OrderStatus.CANCELLED, OrderStatus.REFUNDED] },
+      status: {
+        $nin: [
+          OrderStatus.CANCELLED,
+          OrderStatus.DELIVERY_FAILED,
+          OrderStatus.REFUNDED,
+        ],
+      },
       $or: [
         { status: OrderStatus.DELIVERED },
         { paymentStatus: PaymentStatus.PAID },

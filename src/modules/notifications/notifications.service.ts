@@ -36,6 +36,8 @@ const ORDER_STATUS_MESSAGES: Record<OrderStatus, string> = {
   [OrderStatus.SHIPPING]: 'Đơn hàng {code} đang được giao đến bạn.',
   [OrderStatus.DELIVERED]: 'Đơn hàng {code} đã giao thành công.',
   [OrderStatus.CANCELLED]: 'Đơn hàng {code} đã bị huỷ.',
+  [OrderStatus.DELIVERY_FAILED]:
+    'Đơn hàng {code} giao không thành công và đã được huỷ. Nếu bạn đã thanh toán, cửa hàng sẽ hoàn tiền cho bạn.',
   [OrderStatus.RETURN_REQUESTED]:
     'Yêu cầu hoàn hàng cho đơn {code} đã được gửi.',
   [OrderStatus.RETURN_APPROVED]:
@@ -267,6 +269,20 @@ export class NotificationsService {
       type: NotificationType.MANUAL_REFUND_REQUIRED,
       title: 'Cần hoàn tiền thủ công',
       message: `Đơn ${orderCode} đã đóng nhưng nhận được ${formatVnd(amount)} qua VNPay. Cần hoàn tiền thủ công.`,
+      link: adminOrderLink(orderCode),
+      data: { orderCode, amount, transactionNo },
+    });
+  }
+
+  async notifyAdminsDeliveryFailedRefund(
+    orderCode: string,
+    amount: number,
+    transactionNo?: string,
+  ) {
+    await this.deliverToAdmins({
+      type: NotificationType.MANUAL_REFUND_REQUIRED,
+      title: 'Cần hoàn tiền thủ công',
+      message: `Đơn ${orderCode} giao không thành công nhưng khách đã thanh toán ${formatVnd(amount)}. Cần hoàn tiền thủ công.`,
       link: adminOrderLink(orderCode),
       data: { orderCode, amount, transactionNo },
     });

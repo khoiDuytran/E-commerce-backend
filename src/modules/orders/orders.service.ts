@@ -66,6 +66,14 @@ const ORDER_STATUS_TRANSITIONS: Partial<Record<OrderStatus, OrderStatus[]>> = {
 // Đơn ở các trạng thái này không được cập nhật nữa
 const CLOSED_ORDER_STATUSES: OrderStatus[] = [
   OrderStatus.CANCELLED,
+  OrderStatus.DELIVERY_FAILED,
+  OrderStatus.REFUNDED,
+];
+
+// Đơn ở các trạng thái này không tính vào doanh thu
+const NON_REVENUE_STATUSES: OrderStatus[] = [
+  OrderStatus.CANCELLED,
+  OrderStatus.DELIVERY_FAILED,
   OrderStatus.REFUNDED,
 ];
 
@@ -819,6 +827,75 @@ export class OrdersService {
     return { message: 'Huỷ đơn hàng thành công', order: cancelled };
   }
 
+  /**
+   * Giao thất bại (khách không nhận hàng) — chỉ admin, chỉ với đơn đang giao.
+   * Hoàn kho và lượt coupon ngay. Đơn đã thanh toán không tự hoàn tiền:
+   * gắn cờ trên payment và báo admin hoàn thủ công.
+   */
+  async markDeliveryFailed(userRole: UserRole, _id: string) {
+    this.assertAdmin(userRole);
+    validateObjectIdHelper(_id);
+
+    // Chuyển trạng thái nguyên tử: 2 request cùng lúc chỉ 1 request thắng,
+    // tránh hoàn kho 2 lần. IPN chỉ ghi PAID khi đơn chưa đóng, nên paymentStatus
+    // đọc được ở đây là trạng thái cuối cùng của đơn
+    const failed = await this.orderModel.findOneAndUpdate(
+      { _id, status: OrderStatus.SHIPPING },
+      { status: OrderStatus.DELIVERY_FAILED },
+      { returnDocument: 'after' },
+    );
+
+    if (!failed) {
+      const exists = await this.orderModel.exists({ _id });
+      if (!exists) {
+        throw new NotFoundException('Không tìm thấy đơn hàng');
+      }
+      throw new BadRequestException(
+        'Chỉ đánh dấu giao thất bại cho đơn đang giao. Vui lòng tải lại',
+      );
+    }
+
+    if (failed.paymentStatus === PaymentStatus.PAID) {
+      const payment = await this.paymentModel.findOneAndUpdate(
+        paymentOrderFilter(failed._id),
+        { requiresManualRefund: true },
+        { returnDocument: 'after' },
+      );
+      await this.notificationsService.notifyAdminsDeliveryFailedRefund(
+        failed.orderCode,
+        failed.total,
+        payment?.transactionId,
+      );
+    } else {
+      // Vô hiệu hoá giao dịch đang chờ để không cấp thêm link thanh toán
+      await this.paymentModel.updateOne(
+        {
+          ...paymentOrderFilter(failed._id),
+          status: {
+            $in: [
+              PaymentTransactionStatus.PENDING,
+              PaymentTransactionStatus.FAILED,
+            ],
+          },
+        },
+        { status: PaymentTransactionStatus.EXPIRED },
+      );
+    }
+
+    await this.restoreStockAndCoupon(
+      failed.items.map((item) => ({
+        productId: item.product.toString(),
+        variantId: item.variant?.toString(),
+        quantity: item.quantity,
+      })),
+      failed.coupon?.toString(),
+    );
+
+    await this.notificationsService.notifyOrderStatus(failed);
+
+    return { message: 'Đã đánh dấu đơn giao không thành công', order: failed };
+  }
+
   /** Xoá cứng — chỉ admin, và chỉ với đơn đã huỷ (dọn dữ liệu) */
   async remove(userRole: UserRole, _id: string) {
     this.assertAdmin(userRole);
@@ -852,11 +929,11 @@ export class OrdersService {
       ]),
       this.orderModel.countDocuments({ createdAt: { $gte: startOfToday } }),
       // Doanh thu tính giống trang dashboard: đơn đã giao hoặc đã thanh toán,
-      // trừ đơn đã hủy/hoàn tiền
+      // trừ đơn đã hủy, giao thất bại hoặc hoàn tiền
       this.orderModel.aggregate<{ sum: number }>([
         {
           $match: {
-            status: { $nin: [OrderStatus.CANCELLED, OrderStatus.REFUNDED] },
+            status: { $nin: NON_REVENUE_STATUSES },
             $or: [
               { status: OrderStatus.DELIVERED },
               { paymentStatus: PaymentStatus.PAID },
@@ -877,6 +954,7 @@ export class OrdersService {
       processing: count(OrderStatus.CONFIRMED, OrderStatus.SHIPPING),
       delivered: count(OrderStatus.DELIVERED),
       cancelled: count(OrderStatus.CANCELLED),
+      deliveryFailed: count(OrderStatus.DELIVERY_FAILED),
       returns: count(
         OrderStatus.RETURN_REQUESTED,
         OrderStatus.RETURN_APPROVED,
